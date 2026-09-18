@@ -1,0 +1,28 @@
+{
+  "source": "ECDICT",
+  "license": "MIT",
+  "generatedAt": "2026-09-18T05:05:12.807Z",
+  "filters": "排除 zk；排除词频前 1500 且带 gk 标签的基础词",
+  "books": {
+    "general-core": {
+      "count": 4339,
+      "file": "general-core.json"
+    },
+    "cet4-core": {
+      "count": 2790,
+      "file": "cet4-core.json"
+    },
+    "cet6-core": {
+      "count": 4541,
+      "file": "cet6-core.json"
+    },
+    "postgrad1-core": {
+      "count": 3775,
+      "file": "postgrad1-core.json"
+    },
+    "postgrad2-core": {
+      "count": 3775,
+      "file": "postgrad2-core.json"
+    }
+  }
+}

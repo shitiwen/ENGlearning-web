@@ -1,0 +1,27 @@
+{
+  "packs": [
+    {
+      "id": "my-licensed-reading-01",
+      "type": "reading",
+      "title": "My licensed reading pack",
+      "difficulty": "standard",
+      "estimatedMinutes": 12,
+      "passage": "Replace this sample passage with an English text that you are legally allowed to use. Keep enough surrounding context for every question, and check the answer against the original material before importing the pack into English Loop.",
+      "questions": [
+        {
+          "id": "q1",
+          "prompt": "What must be checked before importing the pack?",
+          "options": ["The screen size", "The answer and source", "The browser theme", "The device battery"],
+          "answer": 1,
+          "explanation": "The sample explicitly asks the editor to check the answer against the original material.",
+          "evidence": "check the answer against the original material"
+        }
+      ],
+      "attribution": "Replace with the real title, year, owner and editor note.",
+      "license": "Replace with the actual permission or personal-use basis.",
+      "verifiedAt": "2026-09-18",
+      "examTargets": ["cet4"],
+      "accessScope": "local"
+    }
+  ]
+}

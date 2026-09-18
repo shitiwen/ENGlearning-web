@@ -1,0 +1,30 @@
+{
+  "title": "Example Imported Note",
+  "creator": "Your name",
+  "publisher": "Personal study material",
+  "publishedAt": "2026-09-17T00:00:00.000Z",
+  "kind": "article",
+  "sourceUrl": "https://example.com/original-source",
+  "mediaUrl": "https://example.com/optional-rights-cleared-audio.mp3",
+  "mediaKind": "audio",
+  "estimatedMinutes": 6,
+  "topics": ["technology", "semiconductor"],
+  "summary": "A short, legally held text for study.",
+  "text": "Paste only text that you have the right to use here.",
+  "glossary": [
+    {
+      "term": "legally held",
+      "pos": "phrase",
+      "meaningZh": "合法持有的",
+      "phonetic": "/ˈliːɡəli held/",
+      "englishDefinition": "possessed or used with legal permission",
+      "wordParts": "legal + -ly; hold → held",
+      "explanation": "A phrase describing material you are allowed to use.",
+      "example": "Keep a legally held copy for personal study.",
+      "derivatives": ["legal", "legality"],
+      "collocations": ["legally held copy"],
+      "synonyms": ["lawfully possessed"],
+      "antonyms": ["illegally obtained"]
+    }
+  ]
+}
