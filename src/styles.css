@@ -91,11 +91,14 @@ body { background:#171713 url('/images/alpine-dawn-hero.png') center 38% / cover
 .console-status { min-width:120px;padding-left:26px;border-left:1px solid rgba(255,255,255,.13);display:flex;flex-direction:column;align-items:flex-end; }.console-status span { color:#998d7d;font-size:10px;letter-spacing:.16em; }.console-status strong { color:#f4eee3;font-family:Georgia,serif;font-size:42px;font-weight:500; }
 .today-console .segmented { background:rgba(0,0,0,.36);border:1px solid rgba(255,255,255,.1); }.today-console .segmented button { color:#aeb6b0; }.today-console .segmented button.active { color:#171c19;background:#eee7da;box-shadow:0 8px 22px rgba(0,0,0,.3); }
 .today-console .task-list { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px; }.today-console .task-card { color:#ece8df;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.1);box-shadow:none; }.today-console .task-card:hover { border-color:rgba(238,199,157,.38);background:rgba(255,255,255,.085); }.today-console .task-number { background:rgba(236,215,184,.14);color:#efd2aa;border:1px solid rgba(239,210,171,.18); }.today-console .task-copy h3 { color:#f4efe7;font-weight:600; }.today-console .task-copy p { color:#a8b2ac; }.today-console .task-meta span { color:#b9c5bd;background:rgba(255,255,255,.07); }.today-console .text-button { color:#c0c7c2; }.today-console .debt-note { margin:18px 0 0;background:rgba(255,255,255,.045);color:#929c96;border:1px solid rgba(255,255,255,.07); }
+.today-console .task-card { grid-template-columns:58px minmax(0,1fr); align-items:start; }
+.today-console .task-actions { grid-column:2; max-width:none; justify-content:flex-start; margin-top:8px; }
 @keyframes console-rise { from { opacity:0;transform:translateY(45px) scale(.985); } to { opacity:1;transform:translateY(0) scale(1); } }
 
-@media (max-width:1050px) {
+@media (max-width:1250px) {
   .brand small,.local-pill { display:none; }.side-nav button { min-width:auto;padding:10px; }.side-nav button span { display:none; }
   .main-content { width:calc(100% - 28px); }.page-today .main-content { width:100%; }.today-console .task-list { grid-template-columns:1fr; }
+  .console-topline { grid-template-columns:1fr;gap:18px; }.console-status { min-width:0;padding:16px 0 0;border-left:0;border-top:1px solid rgba(255,255,255,.13);flex-direction:row;align-items:center;justify-content:space-between; }
 }
 @media (pointer:coarse) and (min-width:801px) {
   .today-console .task-list { grid-template-columns:1fr; }
