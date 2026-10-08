@@ -6,7 +6,11 @@ const sources:FeedSource[] = [
   { name:'CGTN · China', url:'https://www.cgtn.com/subscribe/rss/section/china.xml', scope:'china', kind:'news', topics:['中国','时政'] },
   { name:'CGTN · Tech & Sci', url:'https://www.cgtn.com/subscribe/rss/section/tech-sci.xml', scope:'china', kind:'news', topics:['科技','半导体'] },
   { name:'CGTN · Video', url:'https://www.cgtn.com/subscribe/rss/section/video.xml', scope:'china', kind:'video', topics:['中国','视频'] },
-  { name:'BBC News · World', url:'https://feeds.bbci.co.uk/news/world/rss.xml', scope:'international', kind:'news', topics:['国际','时政'] }
+  { name:'BBC News · World', url:'https://feeds.bbci.co.uk/news/world/rss.xml', scope:'international', kind:'news', topics:['国际','时政'] },
+  { name:'BBC News · Technology', url:'https://feeds.bbci.co.uk/news/technology/rss.xml', scope:'international', kind:'news', topics:['科技'] },
+  { name:'OpenAI · News', url:'https://openai.com/news/rss.xml', scope:'international', kind:'news', topics:['AI','人工智能','科技'] },
+  { name:'VOA Learning English · As It Is', url:'https://learningenglish.voanews.com/api/zkm-ql-vomx-tpej-rqi', scope:'international', kind:'news', topics:['国际','时政'] },
+  { name:'VOA Learning English · Science & Technology', url:'https://learningenglish.voanews.com/api/zmg_pl-vomx-tpeymtm', scope:'international', kind:'news', topics:['科技','AI'] }
 ]
 
 const decode = (value:string) => value
@@ -19,14 +23,31 @@ function tag(block:string, name:string) {
   return decode(block.match(new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${name}>`, 'i'))?.[1] ?? '')
 }
 
+function wordCount(text:string) {
+  return text.match(/[A-Za-z0-9]+(?:[’'-][A-Za-z0-9]+)*/g)?.length ?? 0
+}
+
+function limitTo400Words(text:string) {
+  let excerpt = ''
+  for (const sentence of text.match(/[^.!?]+(?:[.!?]+|$)/g) ?? [text]) {
+    const next = [excerpt, sentence.trim()].filter(Boolean).join(' ')
+    if (wordCount(next) > 400) break
+    excerpt = next
+  }
+  return excerpt
+}
+
 export function parseFeed(xml:string, source:FeedSource) {
-  return [...xml.matchAll(/<item(?:\s[^>]*)?>([\s\S]*?)<\/item>/gi)].slice(0, 8).flatMap((match) => {
+  return [...xml.matchAll(/<item(?:\s[^>]*)?>([\s\S]*?)<\/item>/gi)].flatMap((match) => {
     const block = match[1], title = tag(block, 'title'), link = tag(block, 'link') || tag(block, 'guid'), published = tag(block, 'pubDate')
     const date = new Date(published)
     if (!title || !/^https?:\/\//.test(link) || Number.isNaN(date.getTime())) return []
-    const summary = tag(block, 'description').slice(0, 260)
-    return [{ title, creator:source.name, publisher:source.name, publishedAt:date.toISOString(), kind:source.kind, sourceUrl:link, accessScope:source.scope, estimatedMinutes:2, topics:source.topics, summary, text:summary ? `Official RSS summary — not the full article.\n\n${summary}` : undefined }]
-  })
+    const text = limitTo400Words(tag(block, 'content:encoded') || tag(block, 'description'))
+    const words = wordCount(text)
+    if (words < 200) return []
+    const summary = text.length > 220 ? `${text.slice(0, 220).trimEnd()}…` : text
+    return [{ title, creator:source.name, publisher:source.name, publishedAt:date.toISOString(), kind:source.kind, sourceUrl:link, accessScope:source.scope, estimatedMinutes:Math.ceil(words / 80), topics:source.topics, summary, text }]
+  }).sort((a,b) => b.publishedAt.localeCompare(a.publishedAt)).slice(0, 8)
 }
 
 function reply(response:ServerResponse, status:number, body:unknown) {

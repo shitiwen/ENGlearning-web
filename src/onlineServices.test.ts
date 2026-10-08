@@ -9,15 +9,20 @@ import type { LearnerProfileInput } from './learnerProfile'
 import type { LearnerProfile } from './types'
 
 describe('线上更新与用户自己的 AI', () => {
-  it('RSS 部分失效时仍返回可阅读的摘要，并保留来源', async () => {
-    const xml = '<rss><item><title>Study</title><link>https://example.org/article</link><pubDate>Thu, 08 Oct 2026 08:00:00 GMT</pubDate><description><![CDATA[<p>A short &amp; useful summary.</p>]]></description></item></rss>'
+  it('RSS 部分失效时仅保留 200–400 词的最新短篇，并保留来源', async () => {
+    const article = 'New research explains the development and its impact on daily life. '.repeat(40)
+    const xml = `<rss><item><title>Older study</title><link>https://example.org/older</link><pubDate>Wed, 07 Oct 2026 08:00:00 GMT</pubDate><description>Older item</description></item><item><title>Latest study</title><link>https://example.org/article</link><pubDate>Thu, 08 Oct 2026 08:00:00 GMT</pubDate><content:encoded><![CDATA[${article}]]></content:encoded><description>Short teaser.</description></item></rss>`
     const fetcher = vi.fn().mockResolvedValueOnce(new Response(xml)).mockRejectedValue(new Error('offline'))
     const result = await fetchContentFeed(fetcher)
     expect(result.status).toBe(200)
     expect(result.body.items).toHaveLength(1)
-    expect(result.body.items[0].text).toContain('A short & useful summary.')
+    expect(result.body.items[0].title).toBe('Latest study')
+    expect(result.body.items[0].text).toContain('New research explains')
+    expect(result.body.items[0].text.match(/[A-Za-z0-9]+(?:[’'-][A-Za-z0-9]+)*/g)?.length).toBeGreaterThanOrEqual(200)
+    expect(result.body.items[0].text.match(/[A-Za-z0-9]+(?:[’'-][A-Za-z0-9]+)*/g)?.length).toBeLessThanOrEqual(400)
+    expect(result.body.items[0].estimatedMinutes).toBeGreaterThanOrEqual(3)
     expect(result.body.items[0].sourceUrl).toBe('https://example.org/article')
-    expect(result.body.sources.filter((row) => !row.ok)).toHaveLength(3)
+    expect(result.body.sources.filter((row) => !row.ok)).toHaveLength(7)
   })
   it('源全部不可用时返回明确错误', async () => {
     const result = await fetchContentFeed(vi.fn().mockRejectedValue(new Error('offline')))

@@ -56,5 +56,5 @@ export function rankTrainingPacks(packs:TrainingPack[], level?:EnglishLevel) {
 export function rankContents(contents:ContentItem[], interests:string[] = []) {
   const wanted = new Set(interests.map((item) => item.toLowerCase()))
   const score = (item:ContentItem) => item.topics.filter((topic) => wanted.has(topic.toLowerCase())).length
-  return [...contents].sort((a,b) => score(b)-score(a))
+  return [...contents].sort((a,b) => Date.parse(b.publishedAt)-Date.parse(a.publishedAt) || score(b)-score(a))
 }

@@ -105,6 +105,7 @@ export interface ContentItem {
   captionControl?: 'site' | 'player' | 'fixed' | 'none'
   englishCaptionUrl?: string
   captionNote?: string
+  classic?: boolean
   estimatedMinutes: number
   topics: string[]
   summary?: string

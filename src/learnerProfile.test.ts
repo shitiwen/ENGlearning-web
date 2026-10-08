@@ -15,6 +15,13 @@ describe('个性化资料与推荐', () => {
     const rows = [{ id:'a',topics:['文化'] },{ id:'b',topics:['科技'] }] as never[]
     expect(rankContents(rows,['科技']).map((row) => row.id)).toEqual(['b','a'])
   })
+  it('发布日期优先，兴趣只调整日期相同的内容', () => {
+    const rows = [
+      { id:'old', publishedAt:'2026-10-01T00:00:00Z', topics:['科技'] },
+      { id:'new', publishedAt:'2026-10-08T00:00:00Z', topics:['文化'] }
+    ] as never[]
+    expect(rankContents(rows,['科技']).map((row) => row.id)).toEqual(['new','old'])
+  })
   it('英语基础只调整题包顺序', () => {
     const rows = [{ id:'hard',difficulty:'challenge' },{ id:'easy',difficulty:'foundation' },{ id:'mid',difficulty:'standard' }] as never[]
     expect(rankTrainingPacks(rows,'foundation').map((row) => row.id)).toEqual(['easy','mid','hard'])

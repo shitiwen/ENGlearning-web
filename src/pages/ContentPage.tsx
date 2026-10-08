@@ -1,4 +1,4 @@
-import { ArrowLeft, BookMarked, CheckCircle2, ExternalLink, FilePlus2, Highlighter, Link2, Search, Volume2, X } from 'lucide-react'
+import { ArrowLeft, BookMarked, CheckCircle2, ExternalLink, FilePlus2, Highlighter, Link2, RefreshCw, Search, Volume2, X } from 'lucide-react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useRef, useState } from 'react'
 import { localDateKey } from '../date'
@@ -13,6 +13,16 @@ import { newId } from '../id'
 
 type LookupDraft = ContentGlossary & { contextSentence: string; start: number; end: number }
 type ContentFormat = 'all' | 'video' | 'audio' | 'article' | 'news' | 'blog' | 'text'
+const CONTENT_BATCH_SIZE = 8
+const isRecentContent = (item:Pick<ContentItem,'publishedAt'>) => {
+  const age = Date.now() - Date.parse(item.publishedAt)
+  return age >= 0 && age <= 14 * 86400000
+}
+const englishWordCount = (text:string) => text.match(/[A-Za-z0-9]+(?:[’'-][A-Za-z0-9]+)*/g)?.length ?? 0
+const hasTargetReadingLength = (item:Pick<ContentItem,'text'>) => {
+  const words = englishWordCount(item.text ?? '')
+  return words >= 200 && words <= 400
+}
 const contentFormats: Array<{ id:ContentFormat; label:string; description:string }> = [
   { id:'all', label:'全部内容', description:'当前线路的所有素材' },
   { id:'video', label:'短视频', description:'新闻、趣味与情景视频' },
@@ -111,32 +121,44 @@ export function ContentPage({ profile }:{ profile?:LearnerProfile|null }) {
   const [importNotice, setImportNotice] = useState('')
   const [syncing, setSyncing] = useState(false)
   const syncInFlight = useRef(false)
-  const [scope, setScope] = useState<'all' | 'china' | 'international' | 'local'>('china')
+  const [scope, setScope] = useState<'all' | 'china' | 'international' | 'local'>('all')
   const [format, setFormat] = useState<ContentFormat>('all')
+  const [batchIndex, setBatchIndex] = useState(0)
   const highlights = useLiveQuery(() => active ? db.highlights.where('contentId').equals(active.id).toArray() : Promise.resolve<HighlightType[]>([]), [active?.id]) ?? []
 
   const syncOfficialFeeds = async (manual = false) => {
-    if (syncInFlight.current) return
+    if (syncInFlight.current) return null
     syncInFlight.current = true
     setSyncing(true)
     try {
       const response = await fetch('/api/content-feed'); const result = await readApiJson<{ items:Array<Omit<ContentItem,'id'|'createdAt'>> }>(response)
-      const existing = await db.contents.toArray(); const urls = new Set(existing.map((item) => item.sourceUrl))
-      let added = 0, skipped = 0
+      const existing = await db.contents.toArray(); const previousByUrl = new Map(existing.map((item) => [item.sourceUrl, item])); const seenUrls = new Set(previousByUrl.keys())
+      let added = 0, skipped = 0, updated = 0
       for (const row of result.items as Array<Omit<ContentItem,'id'|'createdAt'>>) {
         if (!canStudyInside(row)) { skipped += 1; continue }
-        if (urls.has(row.sourceUrl)) continue
-        await saveContent(row); urls.add(row.sourceUrl); added += 1
+        const previous = previousByUrl.get(row.sourceUrl)
+        if (previous) {
+          if (previous.text?.startsWith('Official RSS summary — not the full article.')) {
+            await db.contents.update(previous.id, { title:row.title, creator:row.creator, publisher:row.publisher, publishedAt:row.publishedAt, kind:row.kind, accessScope:row.accessScope, estimatedMinutes:row.estimatedMinutes, topics:row.topics, summary:row.summary, text:row.text })
+            updated += 1
+          }
+          continue
+        }
+        if (seenUrls.has(row.sourceUrl)) continue
+        await saveContent(row); seenUrls.add(row.sourceUrl); added += 1
       }
       localStorage.setItem('english-loop-feed-sync', new Date().toISOString())
-      setImportNotice(`官方订阅源已检查：新增 ${added} 条站内材料；略过 ${skipped} 条只能跳转的来源。`)
-    } catch (error) { if (manual) setImportNotice(error instanceof Error ? `更新失败：${error.message}` : '更新失败') } finally { syncInFlight.current = false; setSyncing(false) }
+      setImportNotice(`官方订阅源已检查：新增 ${added} 条，更新旧版 ${updated} 条；略过 ${skipped} 条无法站内学习的来源。`)
+      return { added, skipped }
+    } catch (error) { if (manual) setImportNotice(error instanceof Error ? `更新失败：${error.message}` : '更新失败'); return null } finally { syncInFlight.current = false; setSyncing(false) }
   }
   useEffect(() => {
+    if (!contents.length) return
     const last = Date.parse(localStorage.getItem('english-loop-feed-sync') ?? '')
-    if (!Number.isFinite(last) || Date.now() - last > 6 * 60 * 60 * 1000) void syncOfficialFeeds(false)
-  // 只在进入内容页时检查一次；数据库 live query 会负责刷新列表。
-  }, [])
+    const hasOldShortFeed = contents.some((item) => item.text?.startsWith('Official RSS summary — not the full article.') && !hasTargetReadingLength(item))
+    if (hasOldShortFeed || !Number.isFinite(last) || Date.now() - last > 6 * 60 * 60 * 1000) void syncOfficialFeeds(false)
+  // 旧版短 RSS 摘要会在下次打开内容页时立即尝试升级，正常更新仍最多每 6 小时一次。
+  }, [contents])
 
   const selectText = async () => {
     if (!active?.text || !textRef.current) return
@@ -203,12 +225,12 @@ export function ContentPage({ profile }:{ profile?:LearnerProfile|null }) {
     try {
       const parsed = JSON.parse(await file.text())
       const rows = Array.isArray(parsed) ? parsed : [parsed]
-      for (const row of rows) await saveContent({ title: row.title, creator: row.creator, publisher: row.publisher, publishedAt: new Date(row.publishedAt).toISOString(), kind: row.kind, sourceUrl: row.sourceUrl, mediaUrl:row.mediaUrl, mediaKind:row.mediaKind, embedUrl:row.embedUrl ?? toVideoEmbed(row.videoUrl ?? row.youtubeUrl ?? ''), accessScope:row.accessScope, captionStatus:row.captionStatus, captionControl:row.captionControl, englishCaptionUrl:row.englishCaptionUrl, captionNote:row.captionNote, estimatedMinutes: Number(row.estimatedMinutes), topics: row.topics ?? [], summary: row.summary, text: row.text, glossary: row.glossary })
+      for (const row of rows) await saveContent({ title: row.title, creator: row.creator, publisher: row.publisher, publishedAt: new Date(row.publishedAt).toISOString(), kind: row.kind, sourceUrl: row.sourceUrl, mediaUrl:row.mediaUrl, mediaKind:row.mediaKind, embedUrl:row.embedUrl ?? toVideoEmbed(row.videoUrl ?? row.youtubeUrl ?? ''), accessScope:row.accessScope, captionStatus:row.captionStatus, captionControl:row.captionControl, englishCaptionUrl:row.englishCaptionUrl, captionNote:row.captionNote, classic:row.classic === true, estimatedMinutes: Number(row.estimatedMinutes), topics: row.topics ?? [], summary: row.summary, text: row.text, glossary: row.glossary })
       setImportNotice(`已导入 ${rows.length} 条内容。`)
     } catch (error) { setImportNotice(error instanceof Error ? `导入失败：${error.message}` : '导入失败') }
   }
 
-  const scopeContents = contents.filter((item) => canStudyInside(item) && (scope === 'all' || accessScope(item) === scope))
+  const scopeContents = contents.filter((item) => canStudyInside(item) && (item.classic || (isRecentContent(item) && hasTargetReadingLength(item))) && (scope === 'all' || accessScope(item) === scope))
   const matchesFormat = (item:ContentItem, value:ContentFormat) => value === 'all' ||
     (value === 'video' && item.kind === 'video') ||
     (value === 'audio' && item.mediaKind === 'audio') ||
@@ -216,12 +238,40 @@ export function ContentPage({ profile }:{ profile?:LearnerProfile|null }) {
     (value === 'news' && item.kind === 'news') ||
     (value === 'blog' && item.kind === 'blog') ||
     (value === 'text' && Boolean(item.text))
-  const filteredContents = rankContents(scopeContents.filter((item) => matchesFormat(item, format)),profile?.interests)
+  const matchingContents = scopeContents.filter((item) => matchesFormat(item, format))
+  const eligibleContents = [
+    ...rankContents(matchingContents.filter((item) => !item.classic),profile?.interests),
+    ...rankContents(matchingContents.filter((item) => item.classic),profile?.interests)
+  ]
+  const pageCount = Math.ceil(eligibleContents.length / CONTENT_BATCH_SIZE)
+  const currentBatch = pageCount ? batchIndex % pageCount : 0
+  const filteredContents = eligibleContents.slice(currentBatch * CONTENT_BATCH_SIZE, (currentBatch + 1) * CONTENT_BATCH_SIZE)
+  const changeBatch = async () => {
+    const sync = await syncOfficialFeeds(true)
+    if (!sync) return
+    const all = await db.contents.toArray()
+    const pool = all.filter((item) => canStudyInside(item) && (item.classic || (isRecentContent(item) && hasTargetReadingLength(item))) && (scope === 'all' || accessScope(item) === scope) && matchesFormat(item, format))
+    const count = Math.ceil(pool.length / CONTENT_BATCH_SIZE)
+    if (!count) {
+      setBatchIndex(0)
+      setImportNotice(`已检查官方源，新增 ${sync.added} 条；暂时没有符合条件的内容。`)
+      return
+    }
+    if (count <= 1) {
+      setBatchIndex(0)
+      setImportNotice(`已检查官方源，新增 ${sync.added} 条；目前只有一批符合条件的内容。`)
+      return
+    }
+    const next = (batchIndex + 1) % count
+    setBatchIndex(next)
+    setImportNotice(`已换到第 ${next + 1}/${count} 批；本次新增 ${sync.added} 条。`)
+  }
+  useEffect(() => { setBatchIndex(0) }, [scope, format])
 
   if (active) return <div className="reader-page page-stack">
     <button className="back-button" onClick={() => { setActive(null); setLookup(null) }}><ArrowLeft size={18} /> 返回内容列表</button>
     <article className="reader-card">
-      <header className="reader-header"><span className="content-kind">{active.kind}</span><h1>{active.title}</h1><p>{active.publisher} · {active.creator} · {new Date(active.publishedAt).toLocaleDateString('zh-CN')} · {active.estimatedMinutes} 分钟</p></header>
+      <header className="reader-header"><span className="content-kind">{active.kind}</span><h1>{active.title}</h1><p>{active.publisher} · {active.creator} · {new Date(active.publishedAt).toLocaleDateString('zh-CN')} · {active.text ? `约 ${englishWordCount(active.text)} 词 · ` : ''}{active.estimatedMinutes} 分钟</p></header>
       <MediaStudy item={active} onSaved={(note) => setActive({ ...active, note })} />
       {active.text ? <>
         <div className="selection-tip"><Search size={17} /> 选中单词或短语，查看并确认此处含义</div>
@@ -241,9 +291,9 @@ export function ContentPage({ profile }:{ profile?:LearnerProfile|null }) {
   </div>
 
   return <div className="page-stack">
-    <section className="page-title"><div><span className="section-kicker">TODAY’S INPUT</span><h1>近期英文内容</h1><p>日常列表只显示能在站内阅读、听音或播放的视频；只有跳转链接的来源不再展示。</p>{importNotice && <span className="notice">{importNotice}</span>}</div><div className="data-actions"><button className="secondary" disabled={syncing} onClick={() => syncOfficialFeeds(true)}>{syncing ? '更新中…' : '更新官方源'}</button><button className="secondary" onClick={() => jsonRef.current?.click()}>导入内容 JSON</button><input ref={jsonRef} hidden type="file" accept="application/json" onChange={(e) => importJson(e.target.files?.[0])} /><button className="primary" onClick={() => setAdding(true)}><FilePlus2 size={18} /> 保存内容</button></div></section>
-    <section className="source-filter panel"><div><strong>素材线路</strong><span>国内源默认优先；国外源单独放置，打不开时不会影响国内内容。</span></div><div className="segmented"><button className={scope === 'china' ? 'active' : ''} onClick={() => setScope('china')}>国内源</button><button className={scope === 'international' ? 'active' : ''} onClick={() => setScope('international')}>国外源</button><button className={scope === 'local' ? 'active' : ''} onClick={() => setScope('local')}>本站文本</button><button className={scope === 'all' ? 'active' : ''} onClick={() => setScope('all')}>全部</button></div></section>
-    <div className="content-browser"><aside className="content-type-rail" aria-label="内容类型"><div className="rail-heading"><span>LIBRARY</span><strong>内容类型</strong></div>{contentFormats.map((option) => <button key={option.id} aria-label={option.label} className={format === option.id ? 'active' : ''} onClick={() => setFormat(option.id)}><span>{option.label}<small>{option.description}</small></span><strong>{scopeContents.filter((item) => matchesFormat(item, option.id)).length}</strong></button>)}</aside><div className="content-results"><div className="content-result-head"><span>{contentFormats.find((item) => item.id === format)?.label}</span><strong>{filteredContents.length} 条</strong></div><div className="content-grid">{filteredContents.map((item) => <article className={`content-card ${item.kind === 'video' ? 'video-card' : ''}`} key={item.id}><div className="content-card-top"><span className="content-kind">{item.kind === 'video' ? '▶ 真人视频' : item.mediaKind === 'audio' ? '♪ 真人音频 + 文章' : item.kind}</span><span>{item.estimatedMinutes} min</span></div><span className={`access-badge access-${accessScope(item)}`}>{accessLabel(item)}</span><h2>{item.title}</h2><p className="content-summary">{item.summary ?? (item.text ? '已保存站内文本，可选词学习。' : '外部链接内容，可记录个人学习笔记。')}</p>{(item.kind === 'video' || item.mediaKind === 'audio') && <p className={`caption-badge caption-${item.captionStatus ?? 'unknown'}`}>{captionLabel(item)}</p>}<div className="tag-row">{item.topics.map((tag) => <span key={tag}>#{tag}</span>)}</div><div className="source-line"><strong>{item.publisher}</strong><span>{item.creator}</span><time>{new Date(item.publishedAt).toLocaleDateString('zh-CN')}</time></div><button className="card-link" onClick={() => setActive(item)}>{contentActionLabel(item)} <ArrowLeft className="arrow-right" size={17} /></button></article>)}</div>{!filteredContents.length && <div className="content-empty">当前线路没有这一类型，换一个分类看看。</div>}</div></div>
+    <section className="page-title"><div><span className="section-kicker">TODAY’S INPUT</span><h1>近期英文内容</h1><p>近期阅读材料约 200–400 词（约 3–5 分钟）；更早内容只保留标记为经典的材料。过短 RSS 摘要会略过。</p>{importNotice && <span className="notice">{importNotice}</span>}</div><div className="data-actions"><button className="secondary" disabled={syncing} onClick={() => void changeBatch()}><RefreshCw size={16} /> {syncing ? '更新中…' : '换一批'}</button><button className="secondary" disabled={syncing} onClick={() => void syncOfficialFeeds(true)}>{syncing ? '更新中…' : '更新官方源'}</button><button className="secondary" onClick={() => jsonRef.current?.click()}>导入内容 JSON</button><input ref={jsonRef} hidden type="file" accept="application/json" onChange={(e) => importJson(e.target.files?.[0])} /><button className="primary" onClick={() => setAdding(true)}><FilePlus2 size={18} /> 保存内容</button></div></section>
+    <section className="source-filter panel"><div><strong>素材线路</strong><span>默认混合国内外近期内容；旧内容仅在标为经典后保留。</span></div><div className="segmented"><button className={scope === 'china' ? 'active' : ''} onClick={() => setScope('china')}>国内源</button><button className={scope === 'international' ? 'active' : ''} onClick={() => setScope('international')}>国外源</button><button className={scope === 'local' ? 'active' : ''} onClick={() => setScope('local')}>本站文本</button><button className={scope === 'all' ? 'active' : ''} onClick={() => setScope('all')}>全部</button></div></section>
+    <div className="content-browser"><aside className="content-type-rail" aria-label="内容类型"><div className="rail-heading"><span>LIBRARY</span><strong>内容类型</strong></div>{contentFormats.map((option) => <button key={option.id} aria-label={option.label} className={format === option.id ? 'active' : ''} onClick={() => setFormat(option.id)}><span>{option.label}<small>{option.description}</small></span><strong>{scopeContents.filter((item) => matchesFormat(item, option.id)).length}</strong></button>)}</aside><div className="content-results"><div className="content-result-head"><span>{contentFormats.find((item) => item.id === format)?.label}</span><strong>{eligibleContents.length ? `${currentBatch + 1}/${pageCount} 批 · ` : ''}${filteredContents.length} 条</strong></div><div className="content-grid">{filteredContents.map((item) => <article className={`content-card ${item.kind === 'video' ? 'video-card' : ''}`} key={item.id}><div className="content-card-top"><span className="content-kind">{item.kind === 'video' ? '▶ 真人视频' : item.mediaKind === 'audio' ? '♪ 真人音频 + 文章' : item.kind}</span><span>{item.text ? `约 ${englishWordCount(item.text)} 词 · ` : ''}${item.estimatedMinutes} min</span></div><span className={`access-badge access-${accessScope(item)}`}>{accessLabel(item)}</span>{item.classic && <span className="classic-badge">经典材料</span>}<h2>{item.title}</h2><p className="content-summary">{item.summary ?? (item.text ? '已保存站内文本，可选词学习。' : '外部链接内容，可记录个人学习笔记。')}</p>{(item.kind === 'video' || item.mediaKind === 'audio') && <p className={`caption-badge caption-${item.captionStatus ?? 'unknown'}`}>{captionLabel(item)}</p>}<div className="tag-row">{item.topics.map((tag) => <span key={tag}>#{tag}</span>)}</div><div className="source-line"><strong>{item.publisher}</strong><span>{item.creator}</span><time>{new Date(item.publishedAt).toLocaleDateString('zh-CN')}</time></div><button className="card-link" onClick={() => setActive(item)}>{contentActionLabel(item)} <ArrowLeft className="arrow-right" size={17} /></button></article>)}</div>{!filteredContents.length && <div className="content-empty">当前没有符合条件的近期内容或经典材料，换一个分类看看。</div>}</div></div>
     {adding && <ContentForm onClose={() => setAdding(false)} />}
   </div>
 }
@@ -290,9 +340,9 @@ function ContentForm({ onClose }: { onClose: () => void }) {
       const videoUrl = String(fd.get('videoUrl') ?? '').trim()
       const embedUrl = videoUrl ? toVideoEmbed(videoUrl) : undefined
       if (videoUrl && !embedUrl) throw new Error('目前支持 B 站或 YouTube 的标准视频链接')
-      await saveContent({ title: String(fd.get('title')), creator: String(fd.get('creator')), publisher: String(fd.get('publisher')), publishedAt: new Date(String(fd.get('publishedAt'))).toISOString(), kind: fd.get('kind') as ContentItem['kind'], sourceUrl: String(fd.get('sourceUrl')), mediaUrl, mediaKind:mediaUrl ? fd.get('mediaKind') as ContentItem['mediaKind'] : undefined, embedUrl, accessScope:fd.get('accessScope') as ContentItem['accessScope'], captionStatus:fd.get('captionStatus') as ContentItem['captionStatus'], captionControl:fd.get('captionControl') as ContentItem['captionControl'], englishCaptionUrl:String(fd.get('englishCaptionUrl') ?? '').trim() || undefined, captionNote:String(fd.get('captionNote') ?? '').trim() || undefined, estimatedMinutes: Number(fd.get('estimatedMinutes')), topics: String(fd.get('topics')).split(/[,，]/).map((s) => s.trim()).filter(Boolean), summary: String(fd.get('summary')), text: String(fd.get('text')).trim() || undefined })
+      await saveContent({ title: String(fd.get('title')), creator: String(fd.get('creator')), publisher: String(fd.get('publisher')), publishedAt: new Date(String(fd.get('publishedAt'))).toISOString(), kind: fd.get('kind') as ContentItem['kind'], sourceUrl: String(fd.get('sourceUrl')), mediaUrl, mediaKind:mediaUrl ? fd.get('mediaKind') as ContentItem['mediaKind'] : undefined, embedUrl, accessScope:fd.get('accessScope') as ContentItem['accessScope'], captionStatus:fd.get('captionStatus') as ContentItem['captionStatus'], captionControl:fd.get('captionControl') as ContentItem['captionControl'], englishCaptionUrl:String(fd.get('englishCaptionUrl') ?? '').trim() || undefined, captionNote:String(fd.get('captionNote') ?? '').trim() || undefined, classic: fd.get('classic') === 'on', estimatedMinutes: Number(fd.get('estimatedMinutes')), topics: String(fd.get('topics')).split(/[,，]/).map((s) => s.trim()).filter(Boolean), summary: String(fd.get('summary')), text: String(fd.get('text')).trim() || undefined })
       onClose()
     } catch (e) { setError(e instanceof Error ? e.message : '保存失败') }
   }
-  return <div className="modal-backdrop"><form className="modal panel" onSubmit={submit}><button type="button" className="sheet-close" onClick={onClose}><X /></button><span className="section-kicker">SAVE CONTENT</span><h2>保存英文内容</h2><p className="legal-note">只粘贴你有权用于个人学习的文本。若只保存链接，本站不会抓取正文。B 站与 YouTube 视频通过官方嵌入播放器显示，不下载视频。</p><div className="form-grid"><label>标题<input name="title" required /></label><label>作者<input name="creator" required /></label><label>媒体/来源<input name="publisher" required /></label><label>发布日期<input name="publishedAt" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} /></label><label>形式<select name="kind"><option value="news">短新闻</option><option value="article">文章</option><option value="blog">博客</option><option value="video">视频</option></select></label><label>预计分钟<input name="estimatedMinutes" type="number" min="1" max="120" defaultValue="8" required /></label><label className="full">原始链接<input name="sourceUrl" type="url" required placeholder="https://..." /></label><label className="full">B 站或 YouTube 链接（可选）<input name="videoUrl" type="url" placeholder="https://www.bilibili.com/video/BV..." /></label><label className="full">直连媒体（可选）<input name="mediaUrl" type="url" placeholder="来源方允许直连的 MP4 或 MP3 地址" /></label><label>媒体类型<select name="mediaKind"><option value="video">视频</option><option value="audio">音频</option></select></label><label>字幕情况<select name="captionStatus"><option value="unknown">未核实</option><option value="verified">有英文字幕/画面文字</option><option value="none">无可用字幕</option><option value="transcript">有文章节选</option></select></label><label className="full">字幕说明<input name="captionNote" placeholder="例如：英文字幕需在播放器中开启" /></label><label className="full">主题（逗号分隔）<input name="topics" placeholder="中国，科技，半导体" /></label><label className="full">简介<input name="summary" /></label><label className="full">合法文本（可选）<textarea name="text" rows={8} placeholder="留空时只保存外部入口；粘贴文本后可站内选词。" /></label></div>{error && <p className="error">{error}</p>}<button className="primary" type="submit"><CheckCircle2 size={17} /> 确认保存</button></form></div>
+  return <div className="modal-backdrop"><form className="modal panel" onSubmit={submit}><button type="button" className="sheet-close" onClick={onClose}><X /></button><span className="section-kicker">SAVE CONTENT</span><h2>保存英文内容</h2><p className="legal-note">只粘贴你有权用于个人学习的文本。若只保存链接，本站不会抓取正文。B 站与 YouTube 视频通过官方嵌入播放器显示，不下载视频。</p><div className="form-grid"><label>标题<input name="title" required /></label><label>作者<input name="creator" required /></label><label>媒体/来源<input name="publisher" required /></label><label>发布日期<input name="publishedAt" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} /></label><label>形式<select name="kind"><option value="news">短新闻</option><option value="article">文章</option><option value="blog">博客</option><option value="video">视频</option></select></label><label>预计分钟<input name="estimatedMinutes" type="number" min="1" max="120" defaultValue="8" required /></label><label className="check-label"><input name="classic" type="checkbox" /> 作为经典材料长期保留</label><label className="full">原始链接<input name="sourceUrl" type="url" required placeholder="https://..." /></label><label className="full">B 站或 YouTube 链接（可选）<input name="videoUrl" type="url" placeholder="https://www.bilibili.com/video/BV..." /></label><label className="full">直连媒体（可选）<input name="mediaUrl" type="url" placeholder="来源方允许直连的 MP4 或 MP3 地址" /></label><label>媒体类型<select name="mediaKind"><option value="video">视频</option><option value="audio">音频</option></select></label><label>字幕情况<select name="captionStatus"><option value="unknown">未核实</option><option value="verified">有英文字幕/画面文字</option><option value="none">无可用字幕</option><option value="transcript">有文章节选</option></select></label><label className="full">字幕说明<input name="captionNote" placeholder="例如：英文字幕需在播放器中开启" /></label><label className="full">主题（逗号分隔）<input name="topics" placeholder="中国，科技，半导体" /></label><label className="full">简介<input name="summary" /></label><label className="full">合法文本（可选）<textarea name="text" rows={8} placeholder="建议 200–400 个英文词；留空时只保存外部入口。" /></label></div>{error && <p className="error">{error}</p>}<button className="primary" type="submit"><CheckCircle2 size={17} /> 确认保存</button></form></div>
 }
