@@ -15,8 +15,7 @@ import { isSupabaseConfigured, supabase } from './supabase'
 import { CloudStatsAutoSync } from './components/CloudStatsAutoSync'
 import type { CloudSyncStatus } from './cloudSyncStatus'
 import { ProfileForm } from './components/ProfileForm'
-import { cachedLearnerProfile, fetchLearnerProfile, saveLearnerProfile, type LearnerProfileInput } from './learnerProfile'
-import { defaultBookForTarget } from './exam'
+import { cachedLearnerProfile, fetchLearnerProfile, saveLearnerProfile, profileSettings, type LearnerProfileInput } from './learnerProfile'
 import type { LearnerProfile } from './types'
 
 export type Page = 'today' | 'content' | 'vocabulary' | 'speaking' | 'training' | 'review' | 'ai' | 'settings'
@@ -86,7 +85,7 @@ export function App() {
   const saveProfile = async (input:LearnerProfileInput, onboarding=false) => {
     if (!user) return
     const saved = await saveLearnerProfile(user.id,input)
-    if (onboarding) await db.settings.update('app',{ examTarget:input.primary_goal, wordBookId:defaultBookForTarget[input.primary_goal], preferredTopics:input.interests })
+    await db.settings.update('app',profileSettings(input,profile,onboarding))
     setProfile(saved)
   }
   if (user && !profile?.onboarding_completed_at) return <main className="auth-shell onboarding-shell"><section className="auth-card onboarding-card panel"><span className="section-kicker">ONE-MINUTE SETUP</span><h1>先认识一下你</h1><p>这些资料只属于当前账号，用来调整内容、训练推荐和 AI 回答。</p><ProfileForm profile={profile} onboarding onSave={(input) => saveProfile(input,true)} /></section></main>

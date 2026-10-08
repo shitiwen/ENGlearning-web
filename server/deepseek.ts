@@ -92,7 +92,7 @@ async function requestWordCard(fetcher:typeof fetch, apiKey:string, model:string
     method:'POST', signal:AbortSignal.timeout(25_000),
     headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${apiKey}` },
     body:JSON.stringify({
-      model, temperature:0.2, max_tokens:900, response_format:{ type:'json_object' },
+      model, thinking:{ type:'disabled' }, temperature:0.2, max_tokens:900, response_format:{ type:'json_object' },
       messages:[
         { role:'system', content:`You create concise English-learning word cards for a Chinese learner. Return JSON only. Do not claim certainty when the sentence is ambiguous. Arrays must contain strings. ${context}` },
         { role:'user', content:`Analyze "${term}" only as used in this sentence:\n${sentence}\nReturn JSON with keys: pos, phonetic, meaningZh, englishDefinition, explanation (Chinese contextual explanation), wordParts, example, derivatives, collocations, synonyms, antonyms. Keep the example natural and different from the source sentence.` }
@@ -111,7 +111,7 @@ async function requestTutorChat(fetcher:typeof fetch, apiKey:string, model:strin
     method:'POST', signal:AbortSignal.timeout(35_000),
     headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${apiKey}` },
     body:JSON.stringify({
-      model, temperature:0.45, max_tokens:1000,
+      model, thinking:{ type:'disabled' }, temperature:0.45, max_tokens:1000,
       messages:[
         { role:'system', content:`You are the English Loop tutor for a Chinese English learner. Help with vocabulary, grammar, reading, listening, speaking practice, exams and study planning. Adapt examples and difficulty to the learner profile when present. Reply in concise Simplified Chinese unless asked for English. Correct errors clearly and give short examples. Never invent a quotation, news fact, transcript, source, score, or vocabulary-size estimate. State uncertainty and ask for source text when needed. ${context}` },
         ...messages
@@ -160,6 +160,6 @@ export async function handleAiRequest(request:Request, options:HandlerOptions = 
     return json(200, { card:await requestWordCard(fetcher, apiKey, model, term, sentence,context), cached:false })
   } catch (error) {
     if (error instanceof HttpError) return json(error.status, { error:error.message })
-    return json(502, { error:error instanceof Error ? error.message : 'AI 请求失败' })
+    return json(502, { error:error instanceof Error && error.name === 'TimeoutError' ? 'AI 响应超时，请稍后重试。' : 'AI 服务暂时无法返回有效结果，请稍后重试。' })
   }
 }

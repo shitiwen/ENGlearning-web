@@ -7,6 +7,7 @@ import type { ContentGlossary, ContentItem, Highlight as HighlightType, LearnerP
 import { Scratchpad } from '../components/Scratchpad'
 import { dictionaryDerivatives, dictionaryMeaning, dictionaryPos, lookupBundledDictionary } from '../dictionary'
 import { aiFetch } from '../aiClient'
+import { readApiJson } from '../apiResponse'
 import { rankContents } from '../learnerProfile'
 import { newId } from '../id'
 
@@ -109,15 +110,17 @@ export function ContentPage({ profile }:{ profile?:LearnerProfile|null }) {
   const jsonRef = useRef<HTMLInputElement>(null)
   const [importNotice, setImportNotice] = useState('')
   const [syncing, setSyncing] = useState(false)
+  const syncInFlight = useRef(false)
   const [scope, setScope] = useState<'all' | 'china' | 'international' | 'local'>('china')
   const [format, setFormat] = useState<ContentFormat>('all')
   const highlights = useLiveQuery(() => active ? db.highlights.where('contentId').equals(active.id).toArray() : Promise.resolve<HighlightType[]>([]), [active?.id]) ?? []
 
   const syncOfficialFeeds = async (manual = false) => {
+    if (syncInFlight.current) return
+    syncInFlight.current = true
     setSyncing(true)
     try {
-      const response = await fetch('/api/content-feed'); const result = await response.json()
-      if (!response.ok) throw new Error(result.error ?? '订阅源请求失败')
+      const response = await fetch('/api/content-feed'); const result = await readApiJson<{ items:Array<Omit<ContentItem,'id'|'createdAt'>> }>(response)
       const existing = await db.contents.toArray(); const urls = new Set(existing.map((item) => item.sourceUrl))
       let added = 0, skipped = 0
       for (const row of result.items as Array<Omit<ContentItem,'id'|'createdAt'>>) {
@@ -127,7 +130,7 @@ export function ContentPage({ profile }:{ profile?:LearnerProfile|null }) {
       }
       localStorage.setItem('english-loop-feed-sync', new Date().toISOString())
       setImportNotice(`官方订阅源已检查：新增 ${added} 条站内材料；略过 ${skipped} 条只能跳转的来源。`)
-    } catch (error) { if (manual) setImportNotice(error instanceof Error ? `更新失败：${error.message}` : '更新失败') } finally { setSyncing(false) }
+    } catch (error) { if (manual) setImportNotice(error instanceof Error ? `更新失败：${error.message}` : '更新失败') } finally { syncInFlight.current = false; setSyncing(false) }
   }
   useEffect(() => {
     const last = Date.parse(localStorage.getItem('english-loop-feed-sync') ?? '')
@@ -155,7 +158,7 @@ export function ContentPage({ profile }:{ profile?:LearnerProfile|null }) {
         }
         const aiResponse = await aiFetch('/api/word-card', { term:selected, sentence })
         if (aiResponse.ok) {
-          const aiResult = await aiResponse.json() as { card:ContentGlossary }
+          const aiResult = await readApiJson<{ card:ContentGlossary }>(aiResponse)
           setLookup((old) => old ? { ...old, ...aiResult.card, contextSentence:old.contextSentence, start:old.start, end:old.end } : old)
           setLookupMessage('AI 已根据当前句生成完整词卡；这是辅助解释，请确认后再收藏。')
           return

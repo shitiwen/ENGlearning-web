@@ -1,7 +1,16 @@
 import { supabase } from './supabase'
+import { defaultBookForTarget } from './exam'
+import type { Settings } from './types'
 import type { ContentItem, EnglishLevel, LearnerProfile, TrainingPack } from './types'
 
 export type LearnerProfileInput = Omit<LearnerProfile, 'id'|'onboarding_completed_at'|'updated_at'>
+
+export function profileSettings(input:LearnerProfileInput, previous?:LearnerProfile|null, onboarding=false):Partial<Settings> {
+  return {
+    preferredTopics:input.interests,
+    ...(onboarding || previous?.primary_goal !== input.primary_goal ? { examTarget:input.primary_goal, wordBookId:defaultBookForTarget[input.primary_goal] } : {}),
+  }
+}
 
 const fields = 'id,display_name,age_band,learner_stage,grade_label,field_of_study,english_level,recent_exam_name,recent_exam_score,recent_exam_max_score,recent_exam_date,primary_goal,interests,onboarding_completed_at,updated_at'
 const cacheKey = (userId:string) => `english-loop-profile:${userId}`

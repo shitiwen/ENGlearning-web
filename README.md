@@ -174,7 +174,7 @@ npm run build
 - RSS 只解决“发现内容”，不能合法、可靠地自动取得所有正文、字幕或媒体文件。国内演示内容另内置新华社、China Daily、CGTN/B 站等已核对入口；用户仍可保存任何合法链接或导入自己有权使用的文本。
 - 口语与听力/阅读训练不能直接把新闻列表当成合格题库。自动更新这类材料还需要：许可明确的音视频或文本、可核验的英文字幕/原文、题目与答案生成、人工或规则校验、版本回滚。当前版本采用已审核训练包，避免 AI 生成错误答案后自动上线。
 - 训练页每天最多检查一次 `/api/practice-feed`，也可手动刷新。未配置远程源时明确继续使用内置题包；配置 `PRACTICE_FEED_URL` 后，后端只接收包含四选一答案、解析、考试目标、来源说明、许可和校验日期的题包。不合格条目不会进入训练列表。
-- 当前自动抓取由 Vite 的本机 Node 中间件完成。若以后只部署纯静态页面，浏览器可能受 CORS 限制；应把 `/api/content-feed` 搬到同域的 Cloudflare Worker/Vercel Function。若希望无人打开页面也定时更新，还需要 Cron/定时任务和服务端存储。
+- `/api/content-feed` 与 `/api/practice-feed` 同时支持 Vite 本地开发和 Cloudflare Pages Functions。官方 RSS 更新显示来源提供的短摘要，明确标注非全文；点击原始来源可阅读完整报道。本站不抓取新闻页面全文。未设置 `PRACTICE_FEED_URL` 时，题库接口检查随本次部署发布的本站题包；维护者新增题包并发布网站后，用户下次检查即可取得。配置合法 HTTPS 审核题包源后，接口读取并校验该源，不合格数据不会覆盖已有题包。自动检查在用户打开页面时触发，不是无人访问时的定时采集。
 
 ## 每位用户使用自己的 DeepSeek Key
 
@@ -186,13 +186,14 @@ npm run build
 
 ## Cloudflare Pages 部署
 
-仓库已包含 Cloudflare Pages Functions，AI 的三个同域路由 `/api/word-card`、`/api/ai/chat`、`/api/ai/test` 无需再部署到 Vercel。
+仓库已包含 Cloudflare Pages Functions，AI 的三个同域路由 `/api/word-card`、`/api/ai/chat`、`/api/ai/test`，以及 `/api/content-feed`、`/api/practice-feed` 无需再部署到 Vercel。
 
 1. 将仓库连接到 Cloudflare Pages，框架选 **React (Vite)**。
 2. 构建命令填 `npm run build`，输出目录填 `dist`。
 3. 在 Pages 的 **Settings → Environment variables** 为 Production 和 Preview 分别设置：
    - `VITE_SUPABASE_URL` 与 `VITE_SUPABASE_PUBLISHABLE_KEY`：给浏览器登录用的公开 Supabase 信息。
    - `SUPABASE_URL` 与 `SUPABASE_PUBLISHABLE_KEY`：值与前两项相同，给 AI Function 验证登录令牌。
+   - AI Function 也可读取已有的 `VITE_SUPABASE_URL` 与 `VITE_SUPABASE_PUBLISHABLE_KEY` 运行变量。修改变量后必须重新部署；仅保存在构建环境而没有提供给 Function 的变量不能用于验证登录。
 4. 不要设置、不要提交 `service_role`、Supabase secret key 或任何统一的 DeepSeek Key。
 
 每个使用者在网站的“AI 接口”页保存自己的 DeepSeek Key；Cloudflare Function 只在一次请求中转发它，不保存、不回显。Cloudflare Pages 支持从 Git 仓库部署带 Functions 的项目，不能用“直接上传”方式部署 Functions。[官方说明](https://developers.cloudflare.com/pages/functions/get-started/)
@@ -202,6 +203,8 @@ npm run build
 ## 考试目标与分级题库
 
 当前已实现通用、四级、六级、考研英语一和考研英语二的目标选择、完整本地词书自动匹配、训练筛选及独立历史记录。内置训练内容是每个目标的原创入门包，不是完整考试题库，也不冒充历年真题。词书切换只改变当前抽词范围；用户从文章收藏的个人生词仍属于同一生词本，其他词书的进度会保留。
+
+初始化及后续修改主要目标会匹配默认词书与训练目标；只修改昵称或其他资料不会覆盖手动词书。兴趣更新会改变内容推荐顺序，英语基础影响题包难度排序，训练页显示推荐依据。真实考试分数、年龄和专业不被自动换算成能力等级；这些资料仅在 AI 请求中作为学习背景。
 
 公开给他人使用前，还需要持续补充许可清晰、答案经过核验的训练题库。AI 可以辅助生成解释、例句和候选题，但不能替代题源授权、事实核验与答案审核。
 

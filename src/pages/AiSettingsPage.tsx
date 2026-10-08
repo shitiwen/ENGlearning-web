@@ -1,6 +1,7 @@
 import { Bot, CheckCircle2, Eye, EyeOff, KeyRound, MessageCircle, PlugZap, Send, Shield, Sparkles, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { aiFetch, aiStorageUserId, loadAiCredential, removeAiCredential, saveAiCredential } from '../aiClient'
+import { readApiJson } from '../apiResponse'
 
 type AiStatus = { available:boolean; model:string|null }
 type ChatMessage = { role:'user' | 'assistant'; content:string }
@@ -41,8 +42,7 @@ export function AiSettingsPage() {
   const test = async () => {
     setBusy(true); setNotice('正在发送一个很短的测试请求…')
     try {
-      const response = await aiFetch('/api/ai/test', {}); const result = await response.json()
-      if (!response.ok) throw new Error(result.error ?? '连接失败')
+      const response = await aiFetch('/api/ai/test', {}); const result = await readApiJson<{ model:string; preview:string }>(response)
       setNotice(`连接成功：${result.model} 返回“${result.preview}”。`)
     } catch (error) { setNotice(error instanceof Error ? error.message : '连接失败') } finally { setBusy(false) }
   }
@@ -56,8 +56,7 @@ export function AiSettingsPage() {
     const next:ChatMessage[] = [...messages, { role:'user', content }]
     setMessages(next); setQuestion(''); setChatBusy(true)
     try {
-      const response = await aiFetch('/api/ai/chat', { messages:next.slice(-12) }); const result = await response.json()
-      if (!response.ok) throw new Error(result.error ?? 'AI 暂时无法回答')
+      const response = await aiFetch('/api/ai/chat', { messages:next.slice(-12) }); const result = await readApiJson<{ answer:string }>(response)
       setMessages((old) => [...old, { role:'assistant', content:result.answer }])
     } catch (error) { setMessages((old) => [...old, { role:'assistant', content:`连接失败：${error instanceof Error ? error.message : '未知错误'}` }]) } finally { setChatBusy(false) }
   }

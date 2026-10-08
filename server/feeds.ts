@@ -19,12 +19,13 @@ function tag(block:string, name:string) {
   return decode(block.match(new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${name}>`, 'i'))?.[1] ?? '')
 }
 
-function parseFeed(xml:string, source:FeedSource) {
+export function parseFeed(xml:string, source:FeedSource) {
   return [...xml.matchAll(/<item(?:\s[^>]*)?>([\s\S]*?)<\/item>/gi)].slice(0, 8).flatMap((match) => {
     const block = match[1], title = tag(block, 'title'), link = tag(block, 'link') || tag(block, 'guid'), published = tag(block, 'pubDate')
     const date = new Date(published)
     if (!title || !/^https?:\/\//.test(link) || Number.isNaN(date.getTime())) return []
-    return [{ title, creator:source.name, publisher:source.name, publishedAt:date.toISOString(), kind:source.kind, sourceUrl:link, accessScope:source.scope, estimatedMinutes:source.kind === 'video' ? 5 : 7, topics:source.topics, summary:tag(block, 'description').slice(0, 260) || '官方订阅源更新；本站只保存标题、日期、摘要与原始链接。' }]
+    const summary = tag(block, 'description').slice(0, 260)
+    return [{ title, creator:source.name, publisher:source.name, publishedAt:date.toISOString(), kind:source.kind, sourceUrl:link, accessScope:source.scope, estimatedMinutes:2, topics:source.topics, summary, text:summary ? `Official RSS summary — not the full article.\n\n${summary}` : undefined }]
   })
 }
 
@@ -38,14 +39,19 @@ export function contentFeedMiddleware() {
   return async (request:IncomingMessage, response:ServerResponse, next:()=>void) => {
     if (request.url?.split('?')[0] !== '/api/content-feed') return next()
     if (request.method !== 'GET') return reply(response, 405, { error:'只支持 GET' })
+    const result = await fetchContentFeed()
+    return reply(response, result.status, result.body)
+  }
+}
+
+export async function fetchContentFeed(fetcher:typeof fetch = fetch) {
     const results = await Promise.all(sources.map(async (source) => {
       try {
-        const upstream = await fetch(source.url, { signal:AbortSignal.timeout(9000), headers:{ 'User-Agent':'EnglishLoop/0.1 personal RSS reader' } })
+        const upstream = await fetcher(source.url, { signal:AbortSignal.timeout(9000), headers:{ 'User-Agent':'EnglishLoop/0.1 personal RSS reader' } })
         if (!upstream.ok) throw new Error(String(upstream.status))
         return { source:source.name, ok:true, items:parseFeed(await upstream.text(), source) }
       } catch { return { source:source.name, ok:false, items:[] } }
     }))
     const items = results.flatMap((result) => result.items).sort((a,b) => b.publishedAt.localeCompare(a.publishedAt))
-    return reply(response, 200, { fetchedAt:new Date().toISOString(), items, sources:results.map(({source,ok}) => ({source,ok})) })
-  }
+    return { status:results.some((result) => result.ok) ? 200 : 502, body:{ fetchedAt:new Date().toISOString(), items, sources:results.map(({source,ok}) => ({source,ok})), ...(!results.some((result) => result.ok) ? {error:'官方内容源暂时无法连接，现有材料仍可使用。'} : {}) } }
 }

@@ -8,9 +8,10 @@ import { formatDuration, useTimer } from '../hooks/useTimer'
 import { scoreAnswer, summarizeAnswers } from '../scoring'
 import type { AnswerRecord, Confidence, ExamTarget, TrainingPack, TrainingSession } from '../types'
 import { validateTrainingPacks } from '../trainingPacks'
-import { rankTrainingPacks } from '../learnerProfile'
+import { rankTrainingPacks, preferredDifficulties } from '../learnerProfile'
 import type { LearnerProfile } from '../types'
 import { newId } from '../id'
+import { readApiJson } from '../apiResponse'
 
 export function TrainingPage({ profile }:{ profile?:LearnerProfile|null }) {
   const [activePack, setActivePack] = useState<TrainingPack | null>(null)
@@ -31,9 +32,8 @@ export function TrainingPage({ profile }:{ profile?:LearnerProfile|null }) {
   const refreshPacks = useCallback(async (manual = true) => {
     setUpdating(true); if (manual) setUpdateNote('正在检查审核题包源…')
     try {
-      const response = await fetch('/api/practice-feed'); const result = await response.json()
-      if (!response.ok) throw new Error(result.error ?? '更新失败')
-      const packs = Array.isArray(result.packs) ? result.packs as TrainingPack[] : []
+      const response = await fetch('/api/practice-feed'); const result = await readApiJson<{ packs:unknown; configured:boolean; note:string }>(response)
+      const packs = validateTrainingPacks(result.packs)
       const merged = [...remotePacks.filter((old) => !packs.some((pack) => pack.id === old.id)), ...packs]
       setRemotePacks(merged); localStorage.setItem('english-loop-practice-packs',JSON.stringify(merged)); localStorage.setItem('english-loop-practice-checked',new Date().toISOString().slice(0,10))
       setUpdateNote(result.configured ? `已更新：${result.note}`:'未配置远程审核题包源，继续使用内置题包。')
@@ -63,6 +63,7 @@ export function TrainingPage({ profile }:{ profile?:LearnerProfile|null }) {
       <section className="page-title"><div><span className="section-kicker">FOCUSED PRACTICE</span><h1>轮换训练</h1><p>国内材料提供稳定阅读；真人听力放在国外来源线路，但不会再因考试目标被隐藏。结构化训练不会未经校验自动出题。</p></div><div className="segmented training-scope" aria-label="训练素材线路"><button className={scope === 'local' ? 'active' : ''} onClick={() => setScope('local')}>国内 / 本站</button><button className={scope === 'international' ? 'active' : ''} onClick={() => setScope('international')}>国外来源</button></div></section>
       <section className="panel target-filter"><div><strong>训练目标</strong><span>切换只筛选题包，不影响已保存成绩。</span></div><div className="target-buttons">{examTargets.map((item) => <button className={target === item.id ? 'active':''} onClick={() => setTargetOverride(item.id)} key={item.id}>{item.short}</button>)}</div><div className="data-actions"><button className="secondary compact" disabled={updating} onClick={() => refreshPacks()}><RefreshCw size={15} /> 刷新审核题包</button><button className="secondary compact" onClick={() => importRef.current?.click()}>导入合法题包</button><input ref={importRef} hidden type="file" accept="application/json" onChange={(event) => void importPacks(event.target.files?.[0])} /></div></section>
       {updateNote && <p className="notice">{updateNote}</p>}
+      {profile && <p className="notice">根据你的{examLabel(target)}目标，优先推荐{({ foundation:'基础', standard:'标准', challenge:'挑战' } as const)[preferredDifficulties(profile.english_level)[0]]}难度；你仍可选择其他题包。</p>}
       <p className="debt-note">本站不批量转载来源和授权不清的“历年真题合集”。你合法持有的阅读/听力题可按 README 的题包格式导入；四级、六级训练必须分别标注目标，考研目标不会伪造听力题型。</p>
       {scope === 'local' && internationalPacks.some((pack) => pack.type === 'listening') && <section className="resume-banner"><Headphones /><div><strong>当前目标有 {internationalPacks.filter((pack) => pack.type === 'listening').length} 组真人听力</strong><p>音频由真实播音员录制；因来源服务器在境外，单独放在国外线路。</p></div><button className="secondary" onClick={() => setScope('international')}>查看真人听力</button></section>}
       {target === 'cet4' && <section className="transition-banner"><div><span>听力过渡第 {Math.min(transitionDay, settings?.listeningTransitionDays ?? 14)} 天</span><strong>{transitionDay <= 7 ? '真人慢速材料 + 基础主旨与细节' : '四级短篇新闻结构 + 真人广播'}</strong></div><p>四级正式结构：短篇新闻、长对话、听力篇章；本站过渡题为原创练习，不冒充真题。</p></section>}
