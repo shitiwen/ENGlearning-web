@@ -15,9 +15,13 @@ const sources:FeedSource[] = [
 
 const decode = (value:string) => value
   .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-  .replace(/<[^>]+>/g, ' ')
   .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-  .replace(/\s+/g, ' ').trim()
+  .replace(/&nbsp;/gi, ' ')
+  .replace(/<br\s*\/?>/gi, '\n')
+  .replace(/<\/(?:p|div|li|h[1-6]|blockquote|section|article)\s*>/gi, '\n\n')
+  .replace(/<[^>]+>/g, ' ')
+  .replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n')
+  .replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
 
 function tag(block:string, name:string) {
   return decode(block.match(new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${name}>`, 'i'))?.[1] ?? '')
