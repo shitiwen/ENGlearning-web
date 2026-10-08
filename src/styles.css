@@ -305,3 +305,12 @@ body { background:#171713 url('/images/alpine-dawn-hero.png') center 38% / cover
 .profile-settings .profile-form fieldset { border-color:rgba(255,255,255,.1);color:#d9ded9; }
 @media (max-width:800px) { .profile-grid { grid-template-columns:1fr 1fr; } }
 @media (max-width:560px) { .profile-grid { grid-template-columns:1fr; }.onboarding-card { padding:24px; } }
+.resource-tools { display:flex;flex-wrap:wrap;align-items:end;gap:16px; }
+.resource-tools label { display:flex;flex-direction:column;gap:7px;flex:1 1 170px; }
+.resource-tools>span { font-size:13px;align-self:center; }
+.question-navigator { margin-bottom:20px;display:flex;flex-direction:column;gap:12px; }
+.question-navigator>div { display:flex;flex-wrap:wrap;gap:8px; }
+.question-navigator button { min-width:40px;min-height:40px;background:#edece4;color:#233e34; }
+.question-navigator button.answered { background:var(--green);color:white; }
+.question-card { scroll-margin-top:24px; }
+.question-card>.secondary { margin-top:16px; }

@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { db } from '../db'
 import { localDateKey } from '../date'
 import { newId } from '../id'
+import { contentSpeakingPrompts, type SpeakingPrompt } from '../speakingResources'
 
-interface SpeakingPrompt { id:string; level:string; title:string; text:string; task:string; cues:string[]; accessScope:'china'|'international'|'local'; audioUrl?:string; embedUrl?:string; sourceUrl?:string; sourceLabel?:string }
 
 const prompts: SpeakingPrompt[] = [
   { id:'china-two-sessions-speaking', level:'国内短视频 · 时政', title:'中国日报｜60 秒介绍全国两会', text:'The Two Sessions are important annual meetings where China discusses national priorities, economic development, and policies that affect people’s lives.', task:'先关字幕听一遍，再在播放器中核对；最后用 30 秒说出会议讨论什么。下方文字是本站练习支架，不冒充视频逐字稿。', cues:['annual meetings','national priorities','affect people’s lives'], accessScope:'china', embedUrl:'https://player.bilibili.com/player.html?bvid=BV1c2PPzGEeA&autoplay=0&danmaku=0', sourceUrl:'https://www.bilibili.com/video/BV1c2PPzGEeA/', sourceLabel:'中国日报 · 哔哩哔哩' },
@@ -28,6 +28,10 @@ function speak(text:string) {
 const stopReference = () => { if ('speechSynthesis' in window) window.speechSynthesis.cancel() }
 
 export function SpeakingPage() {
+  const contents = useLiveQuery(() => db.contents.orderBy('publishedAt').reverse().toArray()) ?? []
+  const [search, setSearch] = useState('')
+  const [format, setFormat] = useState('all')
+  const resources = [...prompts, ...contentSpeakingPrompts(contents).filter((item) => !prompts.some((prompt) => prompt.sourceUrl && prompt.sourceUrl === item.sourceUrl))]
   const recent = useLiveQuery(() => db.sessions.where('module').equals('speaking').reverse().sortBy('startedAt')) ?? []
   const [prompt, setPrompt] = useState<SpeakingPrompt | null>(null)
   const [recording, setRecording] = useState(false)
@@ -39,20 +43,24 @@ export function SpeakingPage() {
   const [message, setMessage] = useState('')
   const [done, setDone] = useState(false)
   const [scope, setScope] = useState<'china'|'international'|'local'>('china')
+  const visible = resources.filter((item) => item.accessScope === scope && (format === 'all' || (format === 'video' ? item.embedUrl || item.videoUrl : format === 'audio' ? item.audioUrl : !item.embedUrl && !item.videoUrl && !item.audioUrl)) && `${item.title} ${item.level} ${item.sourceLabel ?? ''}`.toLowerCase().includes(search.trim().toLowerCase()))
   const recorder = useRef<MediaRecorder | null>(null)
   const stream = useRef<MediaStream | null>(null)
   const chunks = useRef<Blob[]>([])
   const startedAt = useRef(0)
   const referenceAudio = useRef<HTMLAudioElement | null>(null)
+  const referenceVideo = useRef<HTMLVideoElement | null>(null)
 
-  useEffect(() => () => { stopReference(); referenceAudio.current?.pause(); stream.current?.getTracks().forEach((track) => track.stop()); if (audioUrl) URL.revokeObjectURL(audioUrl) }, [audioUrl])
+  useEffect(() => () => { stopReference(); referenceAudio.current?.pause(); referenceVideo.current?.pause(); stream.current?.getTracks().forEach((track) => track.stop()); if (audioUrl) URL.revokeObjectURL(audioUrl) }, [audioUrl])
 
   const begin = (item:SpeakingPrompt) => {
     stopReference()
+    if (audioUrl) URL.revokeObjectURL(audioUrl)
+    setAudioUrl(''); setFluency(3); setClarity(3)
     setPrompt(item); setDone(false); setRepetitions(0); setNote(''); setMessage(''); startedAt.current = Date.now()
   }
   const startRecording = async () => {
-    stopReference(); referenceAudio.current?.pause()
+    stopReference(); referenceAudio.current?.pause(); referenceVideo.current?.pause()
     if (!navigator.mediaDevices?.getUserMedia || !('MediaRecorder' in window)) { setMessage('当前地址或浏览器不支持录音。你仍可计时开口并完成自评；录音通常需要 HTTPS 或 localhost。'); return }
     try {
       stream.current = await navigator.mediaDevices.getUserMedia({ audio:true })
@@ -84,15 +92,15 @@ export function SpeakingPage() {
     setDone(true)
   }
 
-  if (done) return <section className="empty-state"><CheckCircle2 /><h1>今天已经真正开口了</h1><p>记录了 {repetitions} 轮录音、流利度 {fluency}/5、清晰度 {clarity}/5。评分是你的自评，不是假装精确的 AI 分数。</p><button className="primary" onClick={() => setPrompt(null)}>返回口语专栏</button></section>
+  if (done) return <section className="empty-state"><CheckCircle2 /><h1>今天已经真正开口了</h1><p>记录了 {repetitions} 轮录音、流利度 {fluency}/5、清晰度 {clarity}/5。评分是你的自评，不是假装精确的 AI 分数。</p><button className="primary" onClick={() => { setDone(false); setPrompt(null) }}>返回口语专栏</button></section>
   if (prompt) return <div className="speaking-session page-stack">
     <button className="back-button" onClick={exitPractice}>← 退出本次练习</button>
-    <section className="speaking-prompt panel"><span className="section-kicker">{prompt.level}</span><h1>{prompt.title}</h1>{prompt.embedUrl && <iframe className="speaking-embed" src={prompt.embedUrl} title={`${prompt.title} 播放器`} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen />}<blockquote>{prompt.text}</blockquote>{prompt.audioUrl ? <div className="human-reference"><audio ref={referenceAudio} controls preload="metadata" src={prompt.audioUrl} onPlay={stopReference} /><span>{prompt.sourceLabel}</span>{prompt.sourceUrl && <a href={prompt.sourceUrl} target="_blank" rel="noreferrer">查看真人素材来源 <ExternalLink size={14} /></a>}</div> : !prompt.embedUrl ? <div className="reference-actions"><button className="secondary" onClick={() => speak(prompt.text)}><Volume2 size={17} /> 听设备参考音</button><button className="text-button" onClick={stopReference}><Square size={15} /> 停止参考音</button></div> : prompt.sourceUrl && <a className="source-inline" href={prompt.sourceUrl} target="_blank" rel="noreferrer">打开素材来源 <ExternalLink size={14} /></a>}<p>{prompt.task}</p><div className="cue-row">{prompt.cues.map((cue) => <span key={cue}>{cue}</span>)}</div></section>
+    <section className="speaking-prompt panel"><span className="section-kicker">{prompt.level}</span><h1>{prompt.title}</h1>{prompt.embedUrl && <iframe className="speaking-embed" src={prompt.embedUrl} title={`${prompt.title} 播放器`} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen />}<blockquote>{prompt.text || "先听素材，再用自己的话复述；此素材没有站内逐字稿。"}</blockquote>{prompt.videoUrl && <video ref={referenceVideo} onPlay={stopReference} className="speaking-embed" controls preload="metadata" src={prompt.videoUrl} />}{prompt.audioUrl ? <div className="human-reference"><audio ref={referenceAudio} controls preload="metadata" src={prompt.audioUrl} onPlay={stopReference} /><span>{prompt.sourceLabel}</span>{prompt.sourceUrl && <a href={prompt.sourceUrl} target="_blank" rel="noreferrer">查看真人素材来源 <ExternalLink size={14} /></a>}</div> : !prompt.embedUrl && !prompt.videoUrl && prompt.text ? <div className="reference-actions"><button className="secondary" onClick={() => speak(prompt.text)}><Volume2 size={17} /> 听设备参考音</button><button className="text-button" onClick={stopReference}><Square size={15} /> 停止参考音</button></div> : prompt.sourceUrl && <a className="source-inline" href={prompt.sourceUrl} target="_blank" rel="noreferrer">打开素材来源 <ExternalLink size={14} /></a>}<p>{prompt.task}</p><div className="cue-row">{prompt.cues.map((cue) => <span key={cue}>{cue}</span>)}</div></section>
     <section className="recording-panel panel"><h2>录音、回放、再说一遍</h2><p>建议录 2–3 轮，每轮只改一个问题：停顿、重音或表达组织。</p><div className="record-actions">{!recording ? <button className="primary" onClick={startRecording}><Mic2 /> 开始录音</button> : <button className="danger-button" onClick={stopRecording}><Square /> 停止录音</button>}<strong>已录 {repetitions} 轮</strong></div>{audioUrl && <audio controls src={audioUrl} />} {message && <p className="notice">{message}</p>}<small>录音不会上传，也不会写入长期备份；离开页面后释放。练习结果会保存在本地。</small></section>
     <section className="panel self-rating"><h2>完成前自评</h2><div className="rating-grid"><Rating label="流利度" value={fluency} setValue={setFluency} /><Rating label="清晰度" value={clarity} setValue={setClarity} /></div><label>下次只改一件事<textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="例如：少用 um；句尾不要吞音；先说结论。" /></label><button className="primary full-button" disabled={recording} onClick={finish}>完成并保存记录</button></section>
   </div>
 
-  return <div className="page-stack"><section className="page-title"><div><span className="section-kicker">SPEAKING</span><h1>每天开口 10 分钟</h1><p>素材不再只有 VOA；国内短视频、国外真人内容和本站话题分开选择。录音不上传。</p></div></section><section className="source-filter panel"><div><strong>口语素材线路</strong><span>国内源优先，国外源受网络影响，本站话题无需联网。</span></div><div className="segmented"><button className={scope === 'china' ? 'active' : ''} onClick={() => setScope('china')}>国内源</button><button className={scope === 'international' ? 'active' : ''} onClick={() => setScope('international')}>国外源</button><button className={scope === 'local' ? 'active' : ''} onClick={() => setScope('local')}>本站话题</button></div></section><div className="speaking-grid">{prompts.filter((item) => item.accessScope === scope).map((item) => <article className="training-card" key={item.id}><span className="content-kind">{item.level}</span><h2>{item.title}</h2><p>{item.task}</p><button className="primary" onClick={() => begin(item)}>开始练习 <Play size={16} /></button></article>)}</div><section className="panel"><h2>近期口语记录</h2>{recent.length ? <div className="speaking-history">{recent.slice(0,6).map((session) => <p key={session.id}><strong>{new Date(session.startedAt).toLocaleDateString('zh-CN')}</strong><span>录音 {session.speakingResult?.repetitions ?? 0} 轮 · 流利度 {session.speakingResult?.fluency ?? '-'}/5 · 清晰度 {session.speakingResult?.clarity ?? '-'}/5</span></p>)}</div> : <p className="empty-copy">完成第一次练习后，这里会出现真实记录。</p>}</section></div>
+  return <div className="page-stack"><section className="page-title"><div><span className="section-kicker">SPEAKING</span><h1>每天开口 10 分钟</h1><p>跟读、复述、观点表达：内容库中的视频、音频和文章也能成为开口素材。</p></div></section><section className="source-filter panel"><div><strong>口语素材线路</strong><span>国内源优先，国外源受网络影响，本站话题无需联网。</span></div><div className="segmented"><button className={scope === 'china' ? 'active' : ''} onClick={() => setScope('china')}>国内源</button><button className={scope === 'international' ? 'active' : ''} onClick={() => setScope('international')}>国外源</button><button className={scope === 'local' ? 'active' : ''} onClick={() => setScope('local')}>本站话题</button></div></section><section className="resource-tools panel"><label>搜索口语素材<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索标题、来源或主题" /></label><label>练习类型<select value={format} onChange={(event) => setFormat(event.target.value)}><option value="all">全部类型</option><option value="video">视频模仿</option><option value="audio">音频跟读</option><option value="text">话题与阅读复述</option></select></label><span>{visible.length} 份素材 · 与内容库同步</span></section>{!visible.length && <p className="notice">暂无匹配素材，试试其他线路、类型或搜索词；也可在内容板块添加素材。</p>}<div className="speaking-grid">{visible.map((item) => <article className="training-card" key={item.id}><span className="content-kind">{item.level}</span><h2>{item.title}</h2>{item.sourceLabel && <small>{item.sourceLabel}</small>}<p>{item.task}</p><button className="primary" onClick={() => begin(item)}>开始练习 <Play size={16} /></button></article>)}</div><section className="panel"><h2>近期口语记录</h2>{recent.length ? <div className="speaking-history">{recent.slice(0,6).map((session) => <p key={session.id}><strong>{new Date(session.startedAt).toLocaleDateString('zh-CN')}</strong><span>录音 {session.speakingResult?.repetitions ?? 0} 轮 · 流利度 {session.speakingResult?.fluency ?? '-'}/5 · 清晰度 {session.speakingResult?.clarity ?? '-'}/5</span></p>)}</div> : <p className="empty-copy">完成第一次练习后，这里会出现真实记录。</p>}</section></div>
 }
 
 function Rating({ label, value, setValue }:{ label:string; value:1|2|3|4|5; setValue:(value:1|2|3|4|5)=>void }) {
