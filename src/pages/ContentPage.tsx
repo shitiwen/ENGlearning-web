@@ -110,6 +110,10 @@ function accessLabel(item:ContentItem) {
   return scope === 'china' ? '国内源' : scope === 'local' ? '本站内容' : '国外源'
 }
 
+function hasBrokenFeedMarkup(item:ContentItem) {
+  return /^(?:CGTN|BBC News|OpenAI|VOA Learning English) ·/.test(item.publisher) && /<\/?(?:p|img|div|br)\b/i.test(item.text ?? '')
+}
+
 export function ContentPage({ profile }:{ profile?:LearnerProfile|null }) {
   const contents = useLiveQuery(() => db.contents.orderBy('publishedAt').reverse().toArray()) ?? []
   const [active, setActive] = useState<ContentItem | null>(null)
@@ -138,7 +142,7 @@ export function ContentPage({ profile }:{ profile?:LearnerProfile|null }) {
         if (!canStudyInside(row)) { skipped += 1; continue }
         const previous = previousByUrl.get(row.sourceUrl)
         if (previous) {
-          if (previous.text?.startsWith('Official RSS summary — not the full article.')) {
+          if (previous.text?.startsWith('Official RSS summary — not the full article.') || hasBrokenFeedMarkup(previous)) {
             await db.contents.update(previous.id, { title:row.title, creator:row.creator, publisher:row.publisher, publishedAt:row.publishedAt, kind:row.kind, accessScope:row.accessScope, estimatedMinutes:row.estimatedMinutes, topics:row.topics, summary:row.summary, text:row.text })
             updated += 1
           }
@@ -155,9 +159,9 @@ export function ContentPage({ profile }:{ profile?:LearnerProfile|null }) {
   useEffect(() => {
     if (!contents.length) return
     const last = Date.parse(localStorage.getItem('english-loop-feed-sync') ?? '')
-    const hasOldShortFeed = contents.some((item) => item.text?.startsWith('Official RSS summary — not the full article.') && !hasTargetReadingLength(item))
-    if (hasOldShortFeed || !Number.isFinite(last) || Date.now() - last > 6 * 60 * 60 * 1000) void syncOfficialFeeds(false)
-  // 旧版短 RSS 摘要会在下次打开内容页时立即尝试升级，正常更新仍最多每 6 小时一次。
+    const needsRepair = contents.some((item) => (item.text?.startsWith('Official RSS summary — not the full article.') && !hasTargetReadingLength(item)) || hasBrokenFeedMarkup(item))
+    if (needsRepair || !Number.isFinite(last) || Date.now() - last > 6 * 60 * 60 * 1000) void syncOfficialFeeds(false)
+  // 旧版短摘要和带 HTML 标签的 RSS 正文会在下次打开时立即修复。
   }, [contents])
 
   const selectText = async () => {
