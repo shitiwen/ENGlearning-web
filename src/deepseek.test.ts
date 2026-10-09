@@ -1,3 +1,4 @@
+import { aiProviders } from './aiProviders'
 import { describe, expect, it, vi } from 'vitest'
 import { handleAiRequest, learnerContext, normalizeWordCard } from '../server/deepseek'
 
@@ -65,17 +66,15 @@ describe('AI 代理安全边界', () => {
 })
 
  describe('多服务商路由', () => {
-  it.each([
-    ['glm', 'glm-4.6', 'https://open.bigmodel.cn/api/paas/v4/chat/completions'],
-    ['qwen', 'qwen-plus', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'],
-  ])('%s 的词卡、问答与评阅使用对应官方接口', async (provider, model, endpoint) => {
+  it.each(Object.entries(aiProviders).flatMap(([provider, config]) => config.models.map((model) => [provider, model, config.endpoint])))('%s 的词卡、问答与评阅使用对应官方接口', async (provider, model, endpoint) => {
     const fetcher = vi.fn(async (input:string | URL | Request, init?:RequestInit) => {
-      if (String(input).includes('/auth/v1/user')) return Response.json({ id:`provider-${provider}` })
+      if (String(input).includes('/auth/v1/user')) return Response.json({ id:`provider-${provider}-${model}` })
       expect(String(input)).toBe(endpoint)
       expect(init?.redirect).toBe('error')
       const body = JSON.parse(String(init?.body))
       expect(body.model).toBe(model)
       if (provider === 'qwen') { expect(body.enable_thinking).toBe(false); expect(body).not.toHaveProperty('thinking') }
+      else if (model.startsWith('glm-5.3')) { expect(body.thinking).toEqual({ type:'enabled' }); expect(body.reasoning_effort).toBe('low'); expect(body.max_tokens).toBe(4096) }
       else { expect(body.thinking).toEqual({ type:'disabled' }); expect(body).not.toHaveProperty('enable_thinking') }
       return Response.json({ choices:[{ message:{ content:body.response_format ? JSON.stringify({ meaningZh:'可靠的' }) : '学习反馈' } }] })
     }) as unknown as typeof fetch

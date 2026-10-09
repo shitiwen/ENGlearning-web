@@ -91,13 +91,20 @@ export function normalizeWordCard(value:unknown) {
   }
 }
 
+function thinkingParameters(provider:AiProvider, model:string) {
+  if (provider === 'qwen') return { enable_thinking:false }
+  // GLM-5.3 uses mandatory reasoning; leave thinking at its official default.
+  if (provider === 'glm' && model.startsWith('glm-5.3')) return { thinking:{ type:'enabled' }, reasoning_effort:'low' }
+  return { thinking:{ type:'disabled' } }
+}
+
 async function requestWordCard(fetcher:typeof fetch, apiKey:string, model:string, provider:AiProvider, term:string, sentence:string, context='') {
   const upstream = await fetcher(aiProviders[provider].endpoint, {
     redirect:'error',
-    method:'POST', signal:AbortSignal.timeout(25_000),
+    method:'POST', signal:AbortSignal.timeout(60_000),
     headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${apiKey}` },
     body:JSON.stringify({
-      model, ...(provider === 'qwen' ? { enable_thinking:false } : { thinking:{ type:'disabled' } }), temperature:0.2, max_tokens:900, response_format:{ type:'json_object' },
+      model, ...thinkingParameters(provider, model), temperature:0.2, max_tokens:provider === 'glm' && model.startsWith('glm-5.3') ? 4096 : 1200, response_format:{ type:'json_object' },
       messages:[
         { role:'system', content:`You create concise English-learning word cards for a Chinese learner. Return JSON only. Do not claim certainty when the sentence is ambiguous. Arrays must contain strings. ${context}` },
         { role:'user', content:`Analyze "${term}" only as used in this sentence:\n${sentence}\nReturn JSON with keys: pos, phonetic, meaningZh, englishDefinition, explanation (Chinese contextual explanation), wordParts, example, derivatives, collocations, synonyms, antonyms. Keep the example natural and different from the source sentence.` }
@@ -114,10 +121,10 @@ async function requestWordCard(fetcher:typeof fetch, apiKey:string, model:string
 async function requestTutorChat(fetcher:typeof fetch, apiKey:string, model:string, provider:AiProvider, messages:ChatMessage[], context='') {
   const upstream = await fetcher(aiProviders[provider].endpoint, {
     redirect:'error',
-    method:'POST', signal:AbortSignal.timeout(35_000),
+    method:'POST', signal:AbortSignal.timeout(60_000),
     headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${apiKey}` },
     body:JSON.stringify({
-      model, ...(provider === 'qwen' ? { enable_thinking:false } : { thinking:{ type:'disabled' } }), temperature:0.45, max_tokens:1000,
+      model, ...thinkingParameters(provider, model), temperature:0.45, max_tokens:provider === 'glm' && model.startsWith('glm-5.3') ? 4096 : 1200,
       messages:[
         { role:'system', content:`You are the English Loop tutor for a Chinese English learner. Help with vocabulary, grammar, reading, listening, speaking practice, exams and study planning. Adapt examples and difficulty to the learner profile when present. Reply in concise Simplified Chinese unless asked for English. Correct errors clearly and give short examples. Never invent a quotation, news fact, transcript, source, score, or vocabulary-size estimate. State uncertainty and ask for source text when needed. ${context}` },
         ...messages
