@@ -12,7 +12,7 @@ export function recommendedMinutes(tier: TaskTier, override: DateOverride | unde
 }
 
 function adjustment(sessions: TrainingSession[], module: 'listening' | 'reading') {
-  const recent = sessions.filter((s) => s.module === module && s.status === 'submitted' && !s.writtenResult).slice(-5)
+  const recent = sessions.filter((s) => s.module === module && s.status === 'submitted' && !s.writtenResult && !s.examResult).slice(-5)
   if (!recent.length) return { factor: 1, reason: '首次安排，先用标准题量建立真实记录' }
   const accuracy = recent.reduce((sum, s) => sum + (s.accuracy ?? 0), 0) / recent.length
   const uncertainty = recent.reduce((sum, s) => sum + (s.uncertaintyRate ?? 0), 0) / recent.length

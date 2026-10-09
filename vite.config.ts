@@ -4,12 +4,21 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { deepSeekWordCardMiddleware } from './server/localAiMiddleware'
 import { contentFeedMiddleware } from './server/feeds'
 import { practiceFeedMiddleware } from './server/practice'
+import { pastPaperMaterial } from './server/pastPaperMaterial'
 
 function localAiPlugin(supabaseUrl?:string, publishableKey?:string, practiceFeedUrl?:string):Plugin {
   const middleware = deepSeekWordCardMiddleware(supabaseUrl, publishableKey)
   const feeds = contentFeedMiddleware()
   const practice = practiceFeedMiddleware(practiceFeedUrl)
   const install = (server:{middlewares:{use:(handler:(...args:Parameters<typeof middleware>)=>void)=>void}}) => {
+    server.middlewares.use((request,response,next) => {
+      if (request.url?.split('?')[0] !== '/api/past-paper-material') return next()
+      void (async () => {
+        const result = await pastPaperMaterial(new Request(`http://localhost${request.url}`,{method:request.method,headers:request.headers.range ? {Range:request.headers.range} : {}}))
+        response.statusCode = result.status; result.headers.forEach((value,key) => response.setHeader(key,value))
+        response.end(Buffer.from(await result.arrayBuffer()))
+      })().catch(() => { response.statusCode = 502; response.end('原卷读取失败') })
+    })
     server.middlewares.use((request,response,next) => { void feeds(request,response,next) })
     server.middlewares.use((request,response,next) => { void practice(request,response,next) })
     server.middlewares.use((request,response,next) => { void middleware(request,response,next) })

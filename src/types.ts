@@ -180,6 +180,8 @@ export interface TrainingPack {
   examYear?: number
   examMonth?: 6 | 12
   examSet?: number
+  pastPaperId?: string
+  paperSection?: 'full' | 'listening' | 'cloze' | 'matching' | 'reading'
 }
 
 export interface AnswerRecord {
@@ -208,6 +210,7 @@ export interface TrainingSession {
   markedQuestionIds?: string[]
   questionIds?: string[]
   packSnapshot?: TrainingPack
+  examResult?: { paperId:string; writing:string; translation:string }
   writtenResult?: {
     kind: 'writing' | 'translation'
     response: string

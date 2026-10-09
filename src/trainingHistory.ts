@@ -8,8 +8,9 @@ export function trainingTopic(pack:TrainingPack) {
 
 export function questionsToReview(pack:TrainingPack, sessions:TrainingSession[]) {
   const latest = new Map<string, { correct:boolean; confidence:string }>()
-  for (const session of sessions.filter((s) => s.packId === pack.id && s.status === 'submitted').sort((a,b) => (a.submittedAt ?? a.updatedAt).localeCompare(b.submittedAt ?? b.updatedAt))) {
-    for (const answer of session.answers) latest.set(answer.questionId, answer)
+  const ids = new Set(pack.questions.map((q) => q.id))
+  for (const session of sessions.filter((s) => s.status === 'submitted' && (s.packId === pack.id || (pack.pastPaperId && s.packSnapshot?.pastPaperId === pack.pastPaperId))).sort((a,b) => (a.submittedAt ?? a.updatedAt).localeCompare(b.submittedAt ?? b.updatedAt))) {
+    for (const answer of session.answers) if (ids.has(answer.questionId)) latest.set(answer.questionId, answer)
   }
   return pack.questions.filter((q) => { const answer = latest.get(q.id); return answer && (!answer.correct || answer.confidence === 'unsure') })
 }

@@ -27,7 +27,7 @@ export async function collectCloudStatistics(userId:string):Promise<CloudStatist
     content_completed:contents.filter((item) => Boolean(item.completedAt)).length,
     training_sessions:sessions.length,
     listening_sessions:sessions.filter((session) => session.module === 'listening').length,
-    reading_sessions:sessions.filter((session) => session.module === 'reading' && !session.writtenResult).length,
+    reading_sessions:sessions.filter((session) => session.module === 'reading' && !session.writtenResult && !session.examResult).length,
     speaking_sessions:sessions.filter((session) => session.module === 'speaking').length,
     updated_at:new Date().toISOString()
   }

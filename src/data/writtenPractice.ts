@@ -1,6 +1,7 @@
 import type { ExamTarget } from '../types'
 
 export interface WrittenPrompt {
+  pastPaperId?:string
   id:string
   kind:'writing'|'translation'
   title:string

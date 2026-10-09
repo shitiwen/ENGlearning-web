@@ -30,6 +30,7 @@ test('口语接入内容库并可搜索复述素材', async ({ page }) => {
 test('逐题核对锁定作答，答题卡显示进度', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name:'训练', exact:true }).click()
+  await page.getByRole('combobox',{name:'题目来源',exact:true}).selectOption('original')
   await page.getByLabel('作答模式').selectOption('practice')
   await page.getByRole('button', { name:/开始训练/ }).first().click()
   const question = page.locator('.question-card').first()
@@ -44,6 +45,7 @@ test('逐题核对锁定作答，答题卡显示进度', async ({ page }) => {
 test('选词填空可标记、交卷、查看历史并重练错题', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button',{ name:'训练',exact:true }).click()
+  await page.getByRole('combobox',{name:'题目来源',exact:true}).selectOption('original')
   await page.getByRole('combobox',{ name:'题型',exact:true }).selectOption('cloze')
   await expect(page.locator('.training-card')).toHaveCount(2)
   await page.getByRole('button',{ name:/开始训练/ }).first().click()
@@ -68,6 +70,7 @@ test('选词填空可标记、交卷、查看历史并重练错题', async ({ pa
 test('写作草稿恢复、提交与历史反馈入口', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button',{ name:'训练',exact:true }).click()
+  await page.getByRole('combobox',{name:'题目来源',exact:true}).selectOption('original')
   await page.getByRole('combobox',{ name:'题型',exact:true }).selectOption('writing')
   await page.getByRole('button',{ name:/开始训练/ }).first().click()
   const text = 'A regular study routine helps students understand difficult ideas. I plan one focused hour every day.'
