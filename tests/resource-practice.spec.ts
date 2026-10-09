@@ -1,5 +1,19 @@
 import { expect, test } from '@playwright/test'
 
+test('历年真题资料按真实年份月份筛选并显示原卷链接', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button',{ name:'训练',exact:true }).click()
+  await page.getByRole('button',{ name:'历年真题资料',exact:true }).click()
+  await page.getByRole('combobox',{ name:'真题年份',exact:true }).selectOption('2026')
+  await page.getByRole('combobox',{ name:'考试月份',exact:true }).selectOption('6')
+  await expect(page.locator('.past-paper-row')).toHaveCount(1)
+  await expect(page.locator('.past-paper-row')).toContainText('答案待补')
+  await expect(page.locator('.past-paper-row a')).toHaveCount(3)
+  expect(await page.locator('.past-paper-row a').first().getAttribute('href')).toContain('CET46-Resources/blob/')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.screenshot({ path:`test-results/past-papers-${test.info().project.name}.png`,fullPage:true })
+})
+
 test('口语接入内容库并可搜索复述素材', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name:'口语', exact:true }).click()
