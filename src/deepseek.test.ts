@@ -63,3 +63,37 @@ describe('AI 代理安全边界', () => {
     expect(fetcher).toHaveBeenCalledTimes(2)
   })
 })
+
+ describe('多服务商路由', () => {
+  it.each([
+    ['glm', 'glm-4.6', 'https://open.bigmodel.cn/api/paas/v4/chat/completions'],
+    ['qwen', 'qwen-plus', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'],
+  ])('%s 的词卡、问答与评阅使用对应官方接口', async (provider, model, endpoint) => {
+    const fetcher = vi.fn(async (input:string | URL | Request, init?:RequestInit) => {
+      if (String(input).includes('/auth/v1/user')) return Response.json({ id:`provider-${provider}` })
+      expect(String(input)).toBe(endpoint)
+      expect(init?.redirect).toBe('error')
+      const body = JSON.parse(String(init?.body))
+      expect(body.model).toBe(model)
+      if (provider === 'qwen') { expect(body.enable_thinking).toBe(false); expect(body).not.toHaveProperty('thinking') }
+      else { expect(body.thinking).toEqual({ type:'disabled' }); expect(body).not.toHaveProperty('enable_thinking') }
+      return Response.json({ choices:[{ message:{ content:body.response_format ? JSON.stringify({ meaningZh:'可靠的' }) : '学习反馈' } }] })
+    }) as unknown as typeof fetch
+    for (const [path, payload] of [
+      ['/api/ai/test', {}],
+      ['/api/word-card', { term:'reliable', sentence:'It is reliable.' }],
+      ['/api/ai/chat', { messages:[{ role:'user', content:'解释一下' }] }],
+      ['/api/ai/review', { kind:'writing', instructions:'Write about study.', response:'I study English.' }],
+    ] as const) {
+      const response = await handleAiRequest(new Request(`https://example.com${path}`, { method:'POST', headers:{ Authorization:'Bearer session' }, body:JSON.stringify({ apiKey:'private-test-key', provider, model, ...payload }) }), { supabaseUrl:'https://project.supabase.co', publishableKey:'public', fetcher })
+      expect(response.status).toBe(200)
+      expect(await response.text()).not.toContain('private-test-key')
+    }
+  })
+  it.each(['https://evil.example', '__proto__', null])('拒绝非法服务商 %s，不发送 Key', async (provider) => {
+    const fetcher = vi.fn(async () => Response.json({ id:'invalid-provider' })) as unknown as typeof fetch
+    const response = await handleAiRequest(new Request('https://example.com/api/ai/test', { method:'POST', headers:{ Authorization:'Bearer session' }, body:JSON.stringify({ apiKey:'private-test-key', provider, model:'qwen-plus' }) }), { supabaseUrl:'https://project.supabase.co', publishableKey:'public', fetcher })
+    expect(response.status).toBe(400)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+})

@@ -1,7 +1,9 @@
 import { isSupabaseConfigured, supabase } from './supabase'
 import { cachedLearnerProfile } from './learnerProfile'
 
-export type AiCredential = { apiKey:string; model:string }
+import { isAiProvider, type AiProvider } from './aiProviders'
+
+export type AiCredential = { apiKey:string; model:string; provider?:AiProvider }
 
 async function identity() {
   if (!supabase) return { id:'local', token:'' }
@@ -16,7 +18,7 @@ export async function loadAiCredential():Promise<AiCredential | null> {
   const { id } = await identity()
   try {
     const value = JSON.parse(localStorage.getItem(storageKey(id)) ?? 'null') as AiCredential | null
-    return value?.apiKey && value?.model ? value : null
+    return value?.apiKey && value?.model && (value.provider === undefined || isAiProvider(value.provider)) ? { ...value, provider:value.provider ?? 'deepseek' } : null
   } catch { return null }
 }
 
