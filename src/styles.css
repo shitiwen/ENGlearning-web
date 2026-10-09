@@ -451,3 +451,11 @@ body { background:#171713 url('/images/alpine-dawn-hero.png') center 38% / cover
 
 .app-shell:has(.page-training .exercise-layout) .topbar { background:rgba(14,16,14,.94);border-bottom:1px solid rgba(255,255,255,.12); }
 .paper-online-actions { display:flex;flex-wrap:wrap;gap:10px;margin-top:16px; }
+.vocab-entry-actions { display:flex;flex-wrap:wrap;gap:10px; }
+.vocab-review-reminder { display:flex;align-items:center;justify-content:space-between;gap:18px; }
+.vocab-review-reminder p { margin:0;line-height:1.7; }
+@media(max-width:600px) {
+  .vocab-entry-actions { width:100%; }
+  .vocab-entry-actions button { flex:1; }
+  .vocab-review-reminder { align-items:stretch;flex-direction:column; }
+}

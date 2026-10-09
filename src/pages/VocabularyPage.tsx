@@ -45,6 +45,7 @@ export function VocabularyPage() {
   const [completedCount, setCompletedCount] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
   const [spelling, setSpelling] = useState('')
+  const [questionTurn, setQuestionTurn] = useState(0)
   const [confidence, setConfidence] = useState<Confidence>('sure')
   const [feedback, setFeedback] = useState<{ correct:boolean; passed:boolean } | null>(null)
   const [sessionId, setSessionId] = useState('')
@@ -52,6 +53,7 @@ export function VocabularyPage() {
   const [catalog, setCatalog] = useState<WordBookPayload | null>(null)
   const [bookStatus, setBookStatus] = useState('')
   const [loadingBook, setLoadingBook] = useState(false)
+  const [showReviewReminder, setShowReviewReminder] = useState(false)
   const sessionStarted = useRef(0)
   const current = queue[0]
   const stage = current?.reviewStage ?? 0
@@ -65,24 +67,33 @@ export function VocabularyPage() {
     void loadWordBook(settings.wordBookId).then((value) => { setCatalog(value); setBookStatus('') }).catch((error) => setBookStatus(error instanceof Error ? error.message : '词书读取失败'))
   }, [settings?.wordBookId])
 
-  const begin = async () => {
-    if (!settings?.wordBookId) return
+  const begin = async (kind: 'review' | 'new') => {
+    if (!settings?.wordBookId || loadingBook) return
     setLoadingBook(true)
-    let activeCatalog = catalog
-    try { activeCatalog ??= await loadWordBook(settings.wordBookId) }
-    catch (error) { setBookStatus(error instanceof Error ? error.message : '词书读取失败'); setLoadingBook(false); return }
-    const reviewLimit = Math.max(4, Math.min(40, settings.vocabReviewLimit ?? 16))
-    const newLimit = Math.max(0, Math.min(20, settings.vocabNewLimit ?? 8))
-    const fresh = activeCatalog.entries.filter((entry) => !knownWords.has(entry.word)).slice(0, newLimit).map((entry) => materializeWord(entry, settings.wordBookId))
-    if (fresh.length) await db.vocabulary.bulkPut(fresh)
-    const id = newId(), startedAt = new Date().toISOString()
-    const reviewQueue = [...due.slice(0, reviewLimit).map((word) => ({ ...word, reviewStage:0 })), ...fresh]
-    setQueue(reviewQueue); setInitialCount(reviewQueue.length); setCompletedCount(0); setFeedback(null); setSessionId(id); setSessionAnswers([]); sessionStarted.current = Date.now()
-    await db.sessions.put({ id, packId:'vocabulary-multi-round', module:'vocabulary', startedAt, updatedAt:startedAt, elapsedMs:0, answers:[], status:'active' })
-    setLoadingBook(false)
+    setShowReviewReminder(false)
+    try {
+      const reviewLimit = Math.max(4, Math.min(40, settings.vocabReviewLimit ?? 16))
+      const newLimit = Math.max(0, Math.min(20, settings.vocabNewLimit ?? 8))
+      let reviewQueue: VocabularyEntry[] = due.slice(0, reviewLimit).map((word) => ({ ...word, reviewStage:0 }))
+      if (kind === 'new') {
+        const activeCatalog = catalog ?? await loadWordBook(settings.wordBookId)
+        reviewQueue = activeCatalog.entries.filter((entry) => !knownWords.has(entry.word)).slice(0, newLimit).map((entry) => materializeWord(entry, settings.wordBookId))
+      }
+      if (!reviewQueue.length) return
+      const id = newId(), startedAt = new Date().toISOString()
+      await db.transaction('rw', db.vocabulary, db.sessions, async () => {
+        if (kind === 'new') await db.vocabulary.bulkPut(reviewQueue)
+        await db.sessions.put({ id, packId:'vocabulary-multi-round', module:'vocabulary', startedAt, updatedAt:startedAt, elapsedMs:0, answers:[], status:'active' })
+      })
+      setQueue(reviewQueue); setInitialCount(reviewQueue.length); setCompletedCount(0); setSelected(null); setSpelling(''); setConfidence('sure'); setFeedback(null); setSessionId(id); setSessionAnswers([]); sessionStarted.current = Date.now()
+    } catch (error) {
+      setBookStatus(error instanceof Error ? error.message : '训练准备失败，请重试')
+    } finally {
+      setLoadingBook(false)
+    }
   }
   const grade = async () => {
-    if (!current) return
+    if (!current || feedback) return
     const answer = stage === 3 ? spelling.trim().toLowerCase() : selected
     const expected = stage === 1 ? current.term : stage === 3 ? current.term.toLowerCase() : current.meaningZh
     const correct = answer === expected
@@ -99,6 +110,7 @@ export function VocabularyPage() {
   }
   const advance = async () => {
     if (!current || !feedback) return
+    setQuestionTurn((value) => value + 1)
     if (!feedback.passed) {
       setQueue((items) => items.length > 1 ? [...items.slice(1), items[0]] : items)
       setSelected(null); setSpelling(''); setFeedback(null); setConfidence('sure'); return
@@ -128,12 +140,13 @@ export function VocabularyPage() {
     const sentence = definitionPrompt ? current.contextSentence : current.contextSentence.replace(new RegExp(current.term, 'i'), '______')
     return <div className="vocab-session">
       <header className="vocab-session-head"><button className="back-button" onClick={() => { setQueue([]); setInitialCount(0) }}>← 保存并退出</button><div className="vocab-stage-track">{stageInfo.map((item,i) => <span key={item.title} className={i < stage ? 'done' : i === stage ? 'active' : ''}>{i+1} {item.title}</span>)}</div><strong>通关 {completedCount}/{initialCount}</strong></header>
-      <article className="vocab-trainer"><div className="mode-label"><StageIcon size={17} /> {mode.title} · {mode.hint}</div>
+      <div className="vocab-progress" role="progressbar" aria-label="本轮通关进度" aria-valuemin={0} aria-valuemax={initialCount} aria-valuenow={completedCount}><span style={{ transform:`scaleX(${completedCount / initialCount})` }} /></div>
+      <article key={`${current.id}-${stage}-${questionTurn}`} className="vocab-trainer"><div className="mode-label"><StageIcon size={17} /> {mode.title} · {mode.hint}</div>
         {stage === 0 && <><button className="word-audio" onClick={() => speak(current.term)}><Volume2 /> {current.term}</button><p className="word-context">{current.contextSentence}</p></>}
         {stage === 1 && <><h1 className="cloze-sentence">{sentence}</h1><p>{definitionPrompt ? '根据英文释义选择单词' : '选择最符合原句的单词'}</p></>}
         {stage === 2 && <><button className="audio-prompt" onClick={() => speak(current.term)}><Play /> 播放单词发音</button><p>不要看拼写，凭听到的声音选择含义。</p></>}
-        {stage === 3 && <><p className="spelling-meaning">{current.pos} {current.meaningZh}</p><p>{definitionPrompt ? current.englishDefinition : current.contextSentence.replace(new RegExp(current.term,'i'),'______')}</p><input className="spelling-input" autoFocus value={spelling} onChange={(e) => setSpelling(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && spelling && grade()} placeholder="输入完整英文单词" /></>}
-        {stage < 3 && <div className="vocab-options">{options.map((option,i) => <button key={`${option}-${i}`} disabled={!!feedback} className={selected === option ? 'selected' : ''} onClick={() => setSelected(option)}><span>{String.fromCharCode(65+i)}</span>{option}</button>)}</div>}
+        {stage === 3 && <><p className="spelling-meaning">{current.pos} {current.meaningZh}</p><p>{definitionPrompt ? current.englishDefinition : current.contextSentence.replace(new RegExp(current.term,'i'),'______')}</p><input className="spelling-input" disabled={!!feedback} autoFocus value={spelling} onChange={(e) => setSpelling(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && spelling && grade()} placeholder="输入完整英文单词" /></>}
+        {stage < 3 && <div className="vocab-options">{options.map((option,i) => <button key={`${option}-${i}`} disabled={!!feedback} aria-pressed={selected === option} className={[selected === option ? 'selected' : '', feedback && option === (stage === 1 ? current.term : current.meaningZh) ? 'answer-correct' : '', feedback && selected === option && !feedback.correct ? 'answer-wrong' : ''].filter(Boolean).join(' ')} onClick={() => setSelected(option)}><span>{String.fromCharCode(65+i)}</span>{option}</button>)}</div>}
         {!feedback && <div className="vocab-submit"><div className="confidence-row"><span>这次是：</span><button className={confidence === 'sure' ? 'selected' : ''} onClick={() => setConfidence('sure')}>确定</button><button className={confidence === 'unsure' ? 'selected warn' : ''} onClick={() => setConfidence('unsure')}>不确定／猜的</button></div><button className="primary" disabled={stage === 3 ? !spelling.trim() : selected == null} onClick={grade}>确认答案</button></div>}
         {feedback && <WordFeedback word={current} feedback={feedback} nextLabel={feedback.passed ? stage < 3 ? '先练下一个词，稍后回来过下一关' : '本词通关，继续下一词' : '重新排到队尾，从第一关再来'} onNext={advance} />}
       </article>
@@ -141,9 +154,11 @@ export function VocabularyPage() {
   }
 
   const unseen = catalog ? catalog.entries.filter((entry) => !knownWords.has(entry.word)).length : 0
-  const reviewLimit = settings?.vocabReviewLimit ?? 16
-  const newLimit = settings?.vocabNewLimit ?? 8
-  return <div className="page-stack"><section className="page-title"><div><span className="section-kicker">VOCABULARY</span><h1>单词专栏</h1><p>四选一只是第一关；语境、听音和拼写都通过才算本轮掌握。</p></div><button className="primary" disabled={loadingBook || !settings || (!due.length && !unseen)} onClick={begin}>{loadingBook ? '正在准备…' : `开始复习 ${Math.min(due.length,reviewLimit)} + 新词 ${Math.min(unseen,newLimit)}`}</button></section>
+  const reviewLimit = Math.max(4, Math.min(40, settings?.vocabReviewLimit ?? 16))
+  const newLimit = Math.max(0, Math.min(20, settings?.vocabNewLimit ?? 8))
+  return <div className="page-stack"><section className="page-title"><div><h1>单词专栏</h1><p>四选一只是第一关；语境、听音和拼写都通过才算本轮掌握。</p></div><div className="vocab-entry-actions"><button className="primary" disabled={loadingBook || !settings || !due.length} onClick={() => void begin('review')}>复习单词 · {Math.min(due.length,reviewLimit)}</button><button className="secondary" disabled={loadingBook || !settings || !catalog || !unseen || !newLimit} onClick={() => due.length ? setShowReviewReminder(true) : void begin('new')}>学习新词 · {Math.min(unseen,newLimit)}</button></div></section>
+    {showReviewReminder && due.length > 0 && <section className="panel vocab-review-reminder" aria-label="先复习建议"><p role="status">还有 {due.length} 个单词待复习，建议先巩固旧词，再学习新词。</p><div className="vocab-entry-actions"><button className="primary" disabled={loadingBook} onClick={() => void begin('review')}>先去复习</button><button className="secondary" disabled={loadingBook} onClick={() => void begin('new')}>仍然学习新词</button></div></section>}
+    {loadingBook && <p className="notice" role="status">正在准备训练…</p>}
     <section className="panel wordbook-filter"><div><strong>当前词书</strong><span>切换词书不会删除其他词书的复习记录。每轮数量可在设置中调整。</span></div><select aria-label="当前词书" value={settings?.wordBookId ?? 'cet4-core'} onChange={(event) => db.settings.update('app',{ wordBookId:event.target.value as WordBookId })}>{wordBooks.map((book) => <option key={book.id} value={book.id}>{book.label}</option>)}</select></section>
     {bookStatus && <p className="notice">{bookStatus}</p>}
     <section className="vocab-overview"><div><strong>{catalog?.count ?? '—'}</strong><span>过滤基础词后的词书总量</span></div><div><strong>{bookWords.filter((word) => word.state === 'mastered').length}</strong><span>当前词书确定掌握</span></div><div><strong>{due.length}</strong><span>当前词书到期复习</span></div></section>
@@ -153,5 +168,5 @@ export function VocabularyPage() {
 }
 
 function WordFeedback({ word, feedback, nextLabel, onNext }: { word:VocabularyEntry; feedback:{correct:boolean;passed:boolean}; nextLabel:string; onNext:()=>void }) {
-  return <section className={`word-feedback ${feedback.passed ? 'pass' : 'retry'}`}><h2>{feedback.passed ? '这一关通过' : feedback.correct ? '选对了，但还不能算掌握' : '这一关需要重来'}</h2><div className="word-title-row"><div><strong>{word.term}</strong><span>{word.pos} {word.phonetic ?? ''}</span></div><button className="secondary compact" onClick={() => speak(word.term)}><Volume2 size={16} /> 发音</button></div><h3>{word.meaningZh}</h3>{word.englishDefinition && <p><strong>English:</strong> {word.englishDefinition}</p>}<p>{word.explanation}</p>{word.wordParts && <p><strong>构词：</strong>{word.wordParts}</p>}{word.example ? <blockquote>{word.example} <button className="icon-button inline-audio" onClick={() => speak(word.example)} aria-label="朗读例句"><Volume2 size={15} /></button></blockquote> : <p className="notice">该批量词书条目没有人工校验例句，本站不会伪造；可稍后在点词卡中补充。</p>}<div className="word-relations"><div><strong>派生</strong>{word.derivatives?.length ? word.derivatives.map((item) => <span key={item}>{item}</span>) : <span>暂无已校验派生/词形</span>}</div><div><strong>搭配</strong>{word.collocations?.length ? word.collocations.map((item) => <span key={item}>{item}</span>) : <span>暂无已校验搭配</span>}</div><div><strong>近义</strong>{word.synonyms?.length ? word.synonyms.map((item) => <span key={item}>{item}</span>) : <span>暂无</span>}</div><div><strong>反义</strong>{word.antonyms?.length ? word.antonyms.map((item) => <span key={item}>{item}</span>) : <span>暂无</span>}</div></div><button className="primary full-button" onClick={onNext}>{nextLabel}</button></section>
+  return <section className={`word-feedback ${feedback.passed ? 'pass' : 'retry'}`}><h2 role="status">{feedback.passed ? '这一关通过' : feedback.correct ? '选对了，但还不能算掌握' : '这一关需要重来'}</h2><div className="word-title-row"><div><strong>{word.term}</strong><span>{word.pos} {word.phonetic ?? ''}</span></div><button className="secondary compact" onClick={() => speak(word.term)}><Volume2 size={16} /> 发音</button></div><h3>{word.meaningZh}</h3>{word.englishDefinition && <p><strong>English:</strong> {word.englishDefinition}</p>}<p>{word.explanation}</p>{word.wordParts && <p><strong>构词：</strong>{word.wordParts}</p>}{word.example ? <blockquote>{word.example} <button className="icon-button inline-audio" onClick={() => speak(word.example)} aria-label="朗读例句"><Volume2 size={15} /></button></blockquote> : <p className="notice">该批量词书条目没有人工校验例句，本站不会伪造；可稍后在点词卡中补充。</p>}<div className="word-relations"><div><strong>派生</strong>{word.derivatives?.length ? word.derivatives.map((item) => <span key={item}>{item}</span>) : <span>暂无已校验派生/词形</span>}</div><div><strong>搭配</strong>{word.collocations?.length ? word.collocations.map((item) => <span key={item}>{item}</span>) : <span>暂无已校验搭配</span>}</div><div><strong>近义</strong>{word.synonyms?.length ? word.synonyms.map((item) => <span key={item}>{item}</span>) : <span>暂无</span>}</div><div><strong>反义</strong>{word.antonyms?.length ? word.antonyms.map((item) => <span key={item}>{item}</span>) : <span>暂无</span>}</div></div><button className="primary full-button" onClick={onNext}>{nextLabel}</button></section>
 }
