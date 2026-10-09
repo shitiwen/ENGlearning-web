@@ -15,6 +15,20 @@ describe('AI 词卡输出校验', () => {
 })
 
 describe('AI 代理安全边界', () => {
+  it('写作评阅传递完整长作答，超长作答在上游前拒绝', async () => {
+    const responseText = 'My argument and supporting evidence. '.repeat(100)
+    const fetcher = vi.fn(async (input:string | URL | Request, init?:RequestInit) => {
+      if (String(input).includes('/auth/v1/user')) return Response.json({ id:'review-user' })
+      const body = JSON.parse(String(init?.body)) as { messages:Array<{ content:string }> }
+      expect(body.messages[1].content).toContain(responseText)
+      return Response.json({ choices:[{ message:{ content:'建议补充一个具体例子。' } }] })
+    }) as unknown as typeof fetch
+    const request = (response:string) => new Request('https://example.com/api/ai/review',{ method:'POST', headers:{ Authorization:'Bearer valid-session' }, body:JSON.stringify({ apiKey:'sk-private-key-long',model:'deepseek-flash',kind:'writing',instructions:'Discuss study habits.',response }) })
+    const options = { supabaseUrl:'https://project.supabase.co',publishableKey:'public-key',fetcher }
+    expect((await handleAiRequest(request(responseText),options)).status).toBe(200)
+    expect((await handleAiRequest(request('a'.repeat(12001)),options)).status).toBe(400)
+    expect(fetcher).toHaveBeenCalledTimes(3)
+  })
   it('使用经裁剪的当前用户资料且不再写死专业', () => {
     const context = learnerContext({ learnerStage:'college', gradeLabel:'大二', fieldOfStudy:'法学', englishLevel:'strong', primaryGoal:'cet6', interests:['文化'] })
     expect(context).toContain('法学')

@@ -15,7 +15,7 @@ async function nodeRequest(request:IncomingMessage) {
 
 export function deepSeekWordCardMiddleware(supabaseUrl?:string, publishableKey?:string) {
   return async (request:IncomingMessage, response:ServerResponse, next:()=>void) => {
-    if (!['/api/ai/test', '/api/ai/chat', '/api/word-card'].includes(request.url?.split('?')[0] ?? '')) return next()
+    if (!['/api/ai/test', '/api/ai/chat', '/api/ai/review', '/api/word-card'].includes(request.url?.split('?')[0] ?? '')) return next()
     const result = await handleAiRequest(await nodeRequest(request), { supabaseUrl, publishableKey })
     response.statusCode = result.status; result.headers.forEach((value,key) => response.setHeader(key,value)); response.end(await result.text())
   }

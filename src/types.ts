@@ -176,6 +176,10 @@ export interface TrainingPack {
   examTargets?: ExamTarget[]
   license?: string
   verifiedAt?: string
+  topic?: 'reading' | 'listening' | 'cloze' | 'matching'
+  examYear?: number
+  examMonth?: 6 | 12
+  examSet?: number
 }
 
 export interface AnswerRecord {
@@ -199,6 +203,17 @@ export interface TrainingSession {
   accuracy?: number
   uncertaintyRate?: number
   status: 'active' | 'paused' | 'submitted'
+  mode?: 'practice' | 'exam'
+  checkedQuestionIds?: string[]
+  markedQuestionIds?: string[]
+  questionIds?: string[]
+  packSnapshot?: TrainingPack
+  writtenResult?: {
+    kind: 'writing' | 'translation'
+    response: string
+    feedback?: string
+    checklist: string[]
+  }
   speakingResult?: {
     promptId: string
     repetitions: number

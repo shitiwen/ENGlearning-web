@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { TrainingPack } from '../src/types'
 import { validateTrainingPacks } from '../src/trainingPacks'
 import { trainingPacks } from '../src/data/seed'
+import { objectivePracticePacks } from '../src/data/objectivePractice'
 
 function reply(response:ServerResponse, status:number, body:unknown) {
   response.statusCode = status; response.setHeader('Content-Type','application/json; charset=utf-8'); response.end(JSON.stringify(body))
@@ -21,7 +22,7 @@ export function practiceFeedMiddleware(feedUrl?:string) {
 }
 
 export async function fetchPracticeFeed(feedUrl?:string, fetcher:typeof fetch = fetch) {
-    if (!feedUrl) return { status:200, body:{ configured:true, fetchedAt:new Date().toISOString(), packs:validateRemotePacks(trainingPacks), note:'已检查本站随部署发布的题包；新增题包会随网站版本更新。' } }
+    if (!feedUrl) return { status:200, body:{ configured:true, fetchedAt:new Date().toISOString(), packs:validateRemotePacks([...trainingPacks,...objectivePracticePacks]), note:'已检查本站随部署发布的题包；新增题包会随网站版本更新。' } }
     try {
         if (!feedUrl.startsWith('https://')) throw new Error('审核题包源必须使用 HTTPS')
         const upstream = await fetcher(feedUrl,{ signal:AbortSignal.timeout(12_000), headers:{ 'User-Agent':'EnglishLoop/0.2 reviewed-pack-reader' } })

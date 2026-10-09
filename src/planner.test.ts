@@ -3,6 +3,11 @@ import { deferTask, generateDailyTasks } from './planner'
 import type { DailyTask, TrainingSession } from './types'
 
 describe('每日计划', () => {
+  it('主观题没有客观分数，不会当成零分阅读降低计划难度', () => {
+    const sessions:TrainingSession[] = [{ id:'written',packId:'essay',module:'reading',startedAt:'',updatedAt:'',elapsedMs:1,answers:[],status:'submitted',writtenResult:{ kind:'writing',response:'My essay',checklist:[] } }]
+    const tasks = generateDailyTasks({ date:new Date('2026-09-17T12:00:00'),minutes:30,tier:'standard',dueWords:4,sessions })
+    expect(tasks.find((t) => t.module === 'reading')?.reason).toContain('首次安排')
+  })
   it('在时间充足时可生成四项，且总时长贴近预算', () => {
     const tasks = generateDailyTasks({ date:new Date('2026-09-17T12:00:00'), minutes:40, tier:'standard', dueWords:6, sessions:[] })
     expect(tasks).toHaveLength(4)
