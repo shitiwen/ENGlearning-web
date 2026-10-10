@@ -89,28 +89,32 @@ export function TodayPage({ navigate }: { navigate: (page: Page) => void }) {
     else await db.tasks.put(moved)
   }
 
+  const remainingTasks = tasks?.filter((task) => !['completed', 'skipped', 'deferred'].includes(task.status)) ?? []
+  const nextTask = remainingTasks.find((task) => task.status === 'active') ?? remainingTasks[0]
+  const completedCount = tasks?.filter((task) => task.status === 'completed').length ?? 0
+
   return <div className="page-stack">
     <section className="hero">
-      <div><p className="eyebrow">{new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(now)}</p><h1>今天，向前走一点。</h1><p className="daily-quote">{quote[0]}</p><span className="quote-english">{quote[1]}</span></div>
-      <div className="progress-orbit"><strong>{completion}%</strong><span>今日完成</span></div>
+      <div><p className="today-date">{new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(now)}</p><h1>今天，向前走一点。</h1><p className="daily-quote">{quote[0]}</p><span className="quote-english">{quote[1]}</span></div>
     </section>
 
     <section className="today-console">
       <div className="console-topline"><section className="plan-control">
-        <div><span className="section-kicker">今日节奏 · 第 {week} 周（{week % 2 ? '单周' : '双周'}）</span><h2>{minutes} 分钟计划</h2><p>{override?.availableMinutes != null ? '采用你为今天设置的可用时间' : effectiveOverride.busy ? `忙碌日：${scheduledMinutes ? `本周课表今日已有 ${Math.round(scheduledMinutes / 60)} 小时安排，` : ''}计划自动收紧` : '普通日：保持轻量输入与训练'}</p></div>
-        <div className="segmented" aria-label="任务档位">{(['minimum', 'standard', 'bonus'] as TaskTier[]).map((value) => <button key={value} className={tier === value ? 'active' : ''} onClick={() => rebuild(value)}>{tierLabels[value]}</button>)}</div>
-      </section><div className="console-status"><span>DAY PROGRESS</span><strong>{completion}%</strong></div></div>
-      <div className="section-heading"><div><span className="section-kicker">TODAY’S LOOP</span><h2>按时间安排今天</h2></div><span className="quiet"><Clock3 size={16} /> 预计 {tasks?.filter((t) => !['completed', 'skipped', 'deferred'].includes(t.status)).reduce((s, t) => s + t.minutes, 0) ?? 0} 分钟</span></div>
+        <div><h2>今日计划 <span>{minutes} 分钟</span></h2><span className="plan-week">第 {week} 周 · {week % 2 ? '单周' : '双周'}</span><p>{override?.availableMinutes != null ? '采用你为今天设置的可用时间' : effectiveOverride.busy ? `忙碌日：${scheduledMinutes ? `本周课表今日已有 ${Math.round(scheduledMinutes / 60)} 小时安排，` : ''}计划自动收紧` : '普通日：保持轻量输入与训练'}</p></div>
+        <div className="segmented" aria-label="任务档位">{(['minimum', 'standard', 'bonus'] as TaskTier[]).map((value) => <button key={value} aria-pressed={tier === value} className={tier === value ? 'active' : ''} onClick={() => rebuild(value)}>{tierLabels[value]}</button>)}</div>
+      </section></div>
+      <div className="today-progress"><span>已完成 {completedCount} / {tasks?.length ?? 0}</span><progress aria-label="今日任务完成进度" value={completion} max={100} /></div>
+      {nextTask ? <button className="primary next-task" onClick={() => start(nextTask)}>{nextTask.status === 'active' ? '继续学习' : '开始下一项'}<ArrowRight size={19} /></button> : tasks?.length ? <p className="today-finished">今天的任务已安排完毕，保持自己的节奏。</p> : null}
+      <div className="section-heading"><div><h2>按时间安排今天</h2></div><span className="quiet"><Clock3 size={16} /> 预计 {tasks?.filter((t) => !['completed', 'skipped', 'deferred'].includes(t.status)).reduce((s, t) => s + t.minutes, 0) ?? 0} 分钟</span></div>
       <div className="task-list">
-        {tasks?.map((task, index) => <article className={`task-card ${task.status}`} key={task.id}>
+        {tasks?.map((task, index) => <article className={`task-card ${task.status} ${task.id === nextTask?.id ? 'is-next' : ''}`} key={task.id}>
           <div className="task-number">{task.status === 'completed' ? <Check /> : String(index + 1).padStart(2, '0')}</div>
           <div className="task-copy"><div className="task-meta"><span>{moduleLabels[task.module]}</span><span>{task.minutes} 分钟</span><span>{tierLabels[task.tier]}</span></div><h3>{task.title}</h3><p><Sparkles size={14} /> {task.reason}</p></div>
           <div className="task-actions">
             {task.status === 'completed' ? <span className="done-label">已完成</span> : task.status === 'skipped' ? <button className="text-button" onClick={() => update(task, 'pending')}><RotateCcw size={15} />恢复</button> : task.status === 'deferred' ? <span className="quiet">已顺延</span> : <>
               <button className="primary compact" onClick={() => start(task)}>开始 <ArrowRight size={16} /></button>
               <button className="text-button" onClick={() => update(task, 'completed')}><Check size={15} />完成</button>
-              <button className="text-button" onClick={() => defer(task)}><FastForward size={15} />顺延</button>
-              <button className="text-button" onClick={() => update(task, 'skipped')}>跳过</button>
+              <details className="task-more"><summary>更多</summary><div><button className="text-button" onClick={() => defer(task)}><FastForward size={15} />顺延</button><button className="text-button" onClick={() => update(task, 'skipped')}>跳过</button></div></details>
             </>}
           </div>
         </article>)}

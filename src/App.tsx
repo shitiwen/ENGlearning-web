@@ -1,4 +1,4 @@
-import { BarChart3, BookOpen, CalendarCheck, GraduationCap, KeyRound, Languages, Mic2, Settings as SettingsIcon } from 'lucide-react'
+import { BarChart3, BookOpen, CalendarCheck, GraduationCap, KeyRound, Languages, Mic2, MoreHorizontal, Settings as SettingsIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { activateDatabaseForUser, db, seedDatabase } from './db'
@@ -99,7 +99,8 @@ export function App() {
     </header>
     <div className="layout">
       <nav className="side-nav" aria-label="主导航">
-        {nav.map((item) => <button key={item.id} aria-label={item.label} className={page === item.id ? 'active' : ''} onClick={() => setPage(item.id)}><item.icon size={20} /><span>{item.label}</span></button>)}
+        {nav.filter((item) => !['ai', 'settings'].includes(item.id)).map((item) => <button key={item.id} aria-label={item.label} aria-current={page === item.id ? 'page' : undefined} className={`${page === item.id ? 'active' : ''} ${['speaking', 'review'].includes(item.id) ? 'desktop-nav-item' : ''}`} onClick={() => setPage(item.id)}><item.icon size={20} aria-hidden="true" /><span>{item.label}</span></button>)}
+        <details className="nav-more" key={page}><summary className={['speaking', 'review', 'ai', 'settings'].includes(page) ? 'active' : ''}><MoreHorizontal size={20} aria-hidden="true" /><span>更多</span></summary><div className="nav-more-menu">{nav.filter((item) => ['speaking', 'review', 'ai', 'settings'].includes(item.id)).map((item) => <button key={item.id} className={`${page === item.id ? 'active' : ''} ${['speaking', 'review'].includes(item.id) ? 'mobile-nav-item' : ''}`} aria-current={page === item.id ? 'page' : undefined} onClick={() => setPage(item.id)}><item.icon size={18} aria-hidden="true" /><span>{item.label}</span></button>)}</div></details>
       </nav>
       <main className="main-content">
         {page === 'today' && <TodayPage navigate={setPage} />}

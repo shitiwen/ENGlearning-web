@@ -4,6 +4,7 @@ test('25 分钟计划到收藏生词再刷新仍保留', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByText('今天，向前走一点。')).toBeVisible()
   await expect(page.locator('.task-card').first()).toBeVisible()
+  if (!await page.getByRole('button', { name:'设置', exact:true }).isVisible()) await page.locator('.nav-more > summary').click()
   await page.getByRole('button', { name:'设置' }).click()
   const minutes = page.getByLabel('可用分钟')
   await minutes.fill('25'); await minutes.blur()
@@ -51,6 +52,7 @@ test('单词专栏使用四选一并在作答后显示完整词卡', async ({ pa
 
 test('口语练习保存自评并自动形成记录', async ({ page }) => {
   await page.goto('/')
+  if (!await page.getByRole('button', { name:'口语', exact:true }).isVisible()) await page.locator('.nav-more > summary').click()
   await page.getByRole('button', { name:'口语' }).click()
   await expect(page.getByRole('heading', { name:'每天开口 10 分钟' })).toBeVisible()
   await page.getByRole('button', { name:/开始练习/ }).first().click()
@@ -160,6 +162,7 @@ test('侧边栏 AI 接口可按当前设备保存并测试配置', async ({ page
   await page.route('**/api/ai/test', (route) => route.fulfill({ status:200, contentType:'application/json', body:JSON.stringify({ ok:true, model:'deepseek-flash', preview:'可靠的' }) }))
   await page.route('**/api/ai/chat', (route) => route.fulfill({ status:200, contentType:'application/json', body:JSON.stringify({ answer:'这里使用现在完成时，因为动作与现在仍有关联。', model:'deepseek-flash' }) }))
   await page.goto('/')
+  if (!await page.getByRole('button', { name:'AI 接口', exact:true }).isVisible()) await page.locator('.nav-more > summary').click()
   await page.getByRole('button', { name:'AI 接口' }).click()
   await expect(page.getByRole('heading', { name:'AI 接口' })).toBeVisible()
   await page.getByLabel('API Key').fill('sk-test-key-long-enough')
@@ -211,6 +214,7 @@ test('内容页只展示可站内完成的扩充材料', async ({ page }) => {
 
 test('设置考试目标后自动匹配词书并筛选训练', async ({ page }) => {
   await page.goto('/')
+  if (!await page.getByRole('button', { name:'设置', exact:true }).isVisible()) await page.locator('.nav-more > summary').click()
   await page.getByRole('button', { name:'设置' }).click()
   await page.getByRole('button', { name:'六级', exact:true }).click()
   await expect(page.getByLabel('当前词书')).toHaveValue('cet6-core')
@@ -224,6 +228,7 @@ test('设置考试目标后自动匹配词书并筛选训练', async ({ page }) 
 
 test('课表 OCR 文字先形成可编辑草稿再导入', async ({ page }) => {
   await page.goto('/')
+  if (!await page.getByRole('button', { name:'设置', exact:true }).isVisible()) await page.locator('.nav-more > summary').click()
   await page.getByRole('button', { name:'设置' }).click()
   await page.getByLabel('OCR 原始文字（可修正）').fill('周一 高等数学 第1-2节 单周\n星期三 大学英语 14:00-15:35 双周')
   await page.getByRole('button', { name:'重新解析下方文字' }).click()

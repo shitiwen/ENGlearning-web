@@ -16,6 +16,7 @@ test('历年真题资料按真实年份月份筛选并显示原卷链接', async
 
 test('口语接入内容库并可搜索复述素材', async ({ page }) => {
   await page.goto('/')
+  if (!await page.getByRole('button', { name:'口语', exact:true }).isVisible()) await page.locator('.nav-more > summary').click()
   await page.getByRole('button', { name:'口语', exact:true }).click()
   await page.getByRole('button', { name:'国内源', exact:true }).click()
   await page.getByLabel('搜索口语素材').fill('Explain the Circuit')

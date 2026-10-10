@@ -6,6 +6,7 @@ test('更新内容后可以站内阅读，重复更新不重复添加', async ({
   await page.getByRole('button', { name:'内容', exact:true }).click()
   await expect(page.getByText('RSS Test Summary', { exact:true })).toBeVisible()
   await expect(page.getByText('RSS Test Summary', { exact:true })).toHaveCount(1)
+  await page.getByText('更多操作', { exact:true }).click()
   await page.getByRole('button', { name:'更新官方源' }).click()
   await expect(page.getByText(/新增 0 条/)).toBeVisible()
   await page.getByText('RSS Test Summary', { exact:true }).locator('..').getByRole('button', { name:'开始阅读' }).click()
@@ -27,6 +28,7 @@ test('题包刷新走真实本地接口且失败时内置训练仍能启动', as
 test('AI 错误显示中文，自己的 Key 保存在当前设备', async ({ page }) => {
   await page.route('**/api/ai/test', (route) => route.fulfill({ contentType:'text/html', body:'<!doctype html>' }))
   await page.goto('/')
+  if (!await page.getByRole('button', { name:'AI 接口', exact:true }).isVisible()) await page.locator('.nav-more > summary').click()
   await page.getByRole('button', { name:'AI 接口', exact:true }).click()
   await page.getByLabel('API Key').fill('sk-e2e-test-key-only')
   await page.getByRole('button', { name:'保存到当前设备' }).click()
