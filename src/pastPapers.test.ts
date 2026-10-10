@@ -25,8 +25,20 @@ it('近六年90套完整真题与专项使用相同题号及答案', () => {
     expect(source).toBeDefined()
     for (const [n,answer] of Object.entries(paper.answers).filter(([n]) => questionSection(Number(n),paper.target) === section)) expect(source.answers[n]).toBe(answer)
   }
-  expect(pastPapers[0].answers['26']).toBe('D')
-  expect(pastPapers[1].answers['36']).toBe('I')
+  expect(pastPapers.find(p => p.id === 'cet4-2024-06-1')!.answers['26']).toBe('D')
+  expect(pastPapers.find(p => p.id === 'cet4-2024-06-2')!.answers['36']).toBe('I')
+})
+
+it('整套、客观专项和主观专项继承最新考次优先顺序', () => {
+  for (let i=1;i<pastPapers.length;i++) {
+    const previous = pastPapers[i-1], current = pastPapers[i]
+    expect(previous.year*100+previous.month).toBeGreaterThanOrEqual(current.year*100+current.month)
+    if (previous.year === current.year && previous.month === current.month) expect(previous.set).toBeLessThanOrEqual(current.set)
+  }
+  for (const target of ['cet4','cet6']) {
+    expect(fullPaperPacks.find(p => p.examTargets?.includes(target as 'cet4'))?.title).toContain('2026年6月')
+    expect(pastPaperPacks.find(p => p.examTargets?.includes(target as 'cet4'))?.title).toContain('2026年6月')
+  }
 })
 
 it('整卷错题流入专项，专项最新确定答对后从整卷错题移除', () => {

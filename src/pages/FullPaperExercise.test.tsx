@@ -8,7 +8,7 @@ beforeEach(async () => { await db.sessions.clear() })
 afterEach(cleanup)
 
 it('整卷保存并恢复写作、翻译和客观答案，统一交卷后退出不改回草稿', async () => {
-  const pack = fullPaperPacks[0]
+  const pack = fullPaperPacks.find(p => p.pastPaperId === 'cet4-2024-06-1')!
   const props = {pack,mode:'exam' as const,onExit:vi.fn(),onRetry:vi.fn()}
   const view = render(<TrainingExercise {...props} />)
   await screen.findByLabelText('写作作答')
