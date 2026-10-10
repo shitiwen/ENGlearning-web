@@ -1,5 +1,15 @@
 import { expect, test } from '@playwright/test'
 
+test('单词页突出复习和新词入口且没有横向溢出', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name:'单词', exact:true }).click()
+  const entry = page.getByRole('region', { name:'选择单词学习方式' })
+  await expect(entry.getByRole('button', { name:/学习新词/ })).toBeEnabled()
+  await expect(entry.getByRole('button', { name:/复习单词/ })).toBeEnabled()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.screenshot({ path:`.local/vocabulary-entry-${test.info().project.name}.png` })
+})
+
 test('首页进度、下一项和收拢导航保持可用', async ({ page }) => {
   await page.route('**/api/content-feed', (route) => route.fulfill({ json:{ items:[] } }))
   await page.goto('/')

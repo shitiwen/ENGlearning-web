@@ -80,6 +80,20 @@ h1,h2,h3 { text-wrap:balance; }
 .page-training .training-card .primary { background:#f2e9d8;color:#192c26;min-height:44px;border-radius:10px; }
 .page-training .exercise-layout,.reader-page .reader-card { background:#f8f6ef;color:#17312d; }
 .timer,.console-status,.stats-grid strong { font-variant-numeric:tabular-nums; }
+.vocab-start { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px; }
+.vocab-start>button { display:flex;flex-direction:column;align-items:flex-start;text-align:left;padding:28px;border-radius:16px;border:1px solid #748d7c;min-width:0; }
+.vocab-start-review { background:#dce9df;color:#173c35; }
+.vocab-start-new { background:#f2e6d0;color:#493b25; }
+.vocab-start>button:hover:not(:disabled) { background:#f5f0e6;border-color:#d9b77c; }
+.vocab-start>button:disabled { opacity:.7; }
+.vocab-start-title { font-size:28px;font-weight:700;margin:18px 0 8px; }
+.vocab-start-description { font-size:15px;line-height:1.6; }
+.vocab-start-bottom { display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;margin:26px 0 12px;font-size:13px; }
+.vocab-start-bottom strong { font-size:32px;font-weight:600;font-variant-numeric:tabular-nums; }
+.vocab-start-cta { display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:10px;background:#173c35;color:#fff;font-size:14px;font-weight:600; }
+.vocab-start-new .vocab-start-cta { background:#493b25; }
+.vocab-start-hint { font-size:12px;line-height:1.6; }
+@media (max-width:600px) { .vocab-start { grid-template-columns:1fr;gap:14px; }.vocab-start>button { padding:22px; }.vocab-start-title { font-size:25px;margin-top:12px; }.vocab-start-bottom { margin-top:18px; } }
 @media (min-width:801px) and (max-width:1250px) { .side-nav button span { display:block; }.side-nav button { padding:8px; }.brand small { display:none; } }
 @media (min-width:801px) and (max-width:1000px) { .topbar .brand strong { font-size:14px; }.side-nav { left:auto;right:20px;transform:none; }.local-pill,.account-chip { display:none; } }
 @media (max-width:800px) {
