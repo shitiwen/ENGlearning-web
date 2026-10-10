@@ -34,3 +34,20 @@ it('整卷保存并恢复写作、翻译和客观答案，统一交卷后退出�
   expect((await db.sessions.get(saved.id))?.status).toBe('submitted')
   expect((await db.sessions.get(saved.id))?.examResult?.translation).toBe('My translation draft.')
 })
+
+it('考研整卷不含听力，45道客观题及大小作文、翻译统一保存', async () => {
+  const pack = fullPaperPacks.find(p => p.pastPaperId === 'postgrad1-2025')!
+  render(<TrainingExercise pack={pack} mode="exam" onExit={vi.fn()} onRetry={vi.fn()} />)
+  await screen.findByLabelText('写作作答')
+  expect(screen.queryByRole('button',{name:'听力'})).toBeNull()
+  expect(screen.getByText(/请分别标注“小作文”和“大作文”/)).toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText('写作作答'),{target:{value:'小作文: invitation. 大作文: chart description.'}})
+  fireEvent.click(screen.getByRole('button',{name:'完形填空'}))
+  expect(screen.getAllByRole('button',{name:'B 原卷选项 B'})).toHaveLength(20)
+  fireEvent.click(screen.getAllByRole('button',{name:'B 原卷选项 B'})[0])
+  fireEvent.click(screen.getByRole('button',{name:'新题型'}))
+  expect(screen.getAllByText(/原卷第 \d+ 题 · 新题型/)).toHaveLength(5)
+  fireEvent.click(screen.getByRole('button',{name:/提交并判分/}))
+  await screen.findByText('1/45 题正确 · 2%')
+  expect((await db.sessions.toArray())[0].examResult?.writing).toContain('大作文')
+})

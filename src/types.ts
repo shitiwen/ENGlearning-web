@@ -178,7 +178,7 @@ export interface TrainingPack {
   verifiedAt?: string
   topic?: 'reading' | 'listening' | 'cloze' | 'matching'
   examYear?: number
-  examMonth?: 6 | 12
+  examMonth?: number
   examSet?: number
   pastPaperId?: string
   paperSection?: 'full' | 'listening' | 'cloze' | 'matching' | 'reading'

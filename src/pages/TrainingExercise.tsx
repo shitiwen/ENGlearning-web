@@ -7,7 +7,7 @@ import { formatDuration, useTimer } from '../hooks/useTimer'
 import { scoreAnswer, summarizeAnswers } from '../scoring'
 import { trainingTopic, trainingTopicLabels } from '../trainingHistory'
 import { PastPaperReader } from '../components/PastPaperReader'
-import { paperById, paperSectionLabels, questionSection, type PaperSection } from '../pastPapers'
+import { paperById, paperSectionLabels, questionSection, sectionLabel, sectionsForPaper, type PaperSection } from '../pastPapers'
 import type { AnswerRecord, Confidence, TrainingPack, TrainingSession } from '../types'
 
 export function TrainingExercise({ pack, mode:initialMode, review, questionIds, fresh, resumeId, onExit, onRetry }: {
@@ -26,6 +26,8 @@ export function TrainingExercise({ pack, mode:initialMode, review, questionIds, 
   const [marked, setMarked] = useState<string[]>([])
   const [filter, setFilter] = useState('all')
   const wholePaper = pack.paperSection === 'full' && !questionIds
+  const paper = paperById(pack.pastPaperId)
+  const postgrad = paper?.target === 'postgrad1' || paper?.target === 'postgrad2'
   const [paperSection,setPaperSection] = useState<PaperSection>(wholePaper ? 'writing' : pack.paperSection === 'full' ? 'reading' : pack.paperSection ?? 'reading')
   const [writing,setWriting] = useState('')
   const [translation,setTranslation] = useState('')
@@ -71,6 +73,20 @@ export function TrainingExercise({ pack, mode:initialMode, review, questionIds, 
     return () => window.clearInterval(timer)
   })
   useEffect(() => { if (paused || submitted) audio.current?.pause() }, [paused, submitted])
+  useEffect(() => {
+    const element = audio.current
+    if (!element || !pack.audioUrl?.endsWith('.m3u8')) return
+    let disposed = false
+    let player:import('hls.js').default | undefined
+    const source = pack.pastPaperId ? `/api/past-paper-material?id=${encodeURIComponent(pack.pastPaperId)}&kind=audio` : pack.audioUrl
+    void import('hls.js').then(({default:Hls}) => {
+      if (disposed) return
+      if (Hls.isSupported()) { player = new Hls(); player.loadSource(source!); player.attachMedia(element); player.on(Hls.Events.ERROR, (_event,data) => { if (data.fatal && !disposed) setError('听力读取失败，请切换题型后重试或打开音频来源；作答仍保留。') }) }
+      else if (element.canPlayType('application/vnd.apple.mpegurl')) element.src = source!
+      else setError('当前浏览器无法播放此听力，请打开音频来源。')
+    }).catch(() => { if (!disposed) setError('听力播放器加载失败，请重试或打开音频来源。') })
+    return () => { disposed = true; player?.destroy() }
+  }, [pack.audioUrl,pack.pastPaperId,paperSection,session])
 
   const saveAndExit = async () => {
     if (submitted) { onExit(); return }
@@ -111,7 +127,7 @@ export function TrainingExercise({ pack, mode:initialMode, review, questionIds, 
   }
   const summary = summarizeAnswers(records)
   const weakIds = records.filter((a) => !a.correct || a.confidence === 'unsure').map((a) => a.questionId)
-  const sectionQuestions = wholePaper ? questions.filter((q) => questionSection(Number(q.id.split('-q').at(-1))) === paperSection) : questions
+  const sectionQuestions = wholePaper ? questions.filter((q) => questionSection(Number(q.id.split('-q').at(-1)),paper?.target) === paperSection) : questions
   const visible = sectionQuestions.filter((q) => filter === 'all' || (filter === 'marked' ? marked.includes(q.id) : submitted ? weakIds.includes(q.id) : !answers[q.id]))
   const remaining = Math.max(0, pack.estimatedMinutes * 60000 - elapsed)
 
@@ -121,15 +137,15 @@ export function TrainingExercise({ pack, mode:initialMode, review, questionIds, 
     {error && <p className="notice" role="alert">{error}</p>}
     {submitted && <section className="result-banner training-result"><CheckCircle2 /><div><h2>{summary.correct}/{summary.total} 题正确 · {Math.round(summary.accuracy*100)}%</h2><p>确定掌握 {summary.mastered} 题 · 用时 {formatDuration(elapsed)}{mode === 'practice' ? ' · 练习结果包含核对过的题目' : ''}</p></div>{weakIds.length > 0 && <button className="primary" onClick={() => onRetry(weakIds)}>重练错题与不确定题（{weakIds.length}）</button>}</section>}
     {!submitted && <p className="training-time-note">建议用时 {pack.estimatedMinutes} 分钟 · {remaining ? `还剩 ${formatDuration(remaining)}` : '已超过建议时间，可继续完成后交卷'}{paused ? ' · 已暂停，点击继续后作答' : ''}</p>}
-    {wholePaper && <nav className="paper-section-tabs" aria-label="整卷分区">{(Object.keys(paperSectionLabels) as PaperSection[]).map((section) => <button key={section} aria-pressed={paperSection === section} onClick={() => { setPaperSection(section); setFilter('all') }}>{paperSectionLabels[section]}</button>)}</nav>}
+    {wholePaper && <nav className="paper-section-tabs" aria-label="整卷分区">{sectionsForPaper(paper).map((section) => <button key={section} aria-pressed={paperSection === section} onClick={() => { setPaperSection(section); setFilter('all') }}>{sectionLabel(section,paper?.target)}</button>)}</nav>}
     {wholePaper && submitted && <p className="notice">客观题结果不换算官方 710 分。写作 {writing.trim() ? '已保存' : '未作答'} · 翻译 {translation.trim() ? '已保存' : '未作答'}，主观题不计入客观正确率。</p>}
-    {(pack.type === 'listening' || wholePaper && paperSection === 'listening') && <section className="media-panel"><audio ref={audio} controls preload="metadata" src={pack.pastPaperId ? `/api/past-paper-material?id=${encodeURIComponent(pack.pastPaperId)}&kind=audio` : pack.audioUrl} onPlay={() => { if (paused) audio.current?.pause() }}>当前浏览器无法播放音频。</audio><p>计时测试交卷后显示原文；逐题练习核对后锁定答案。</p>{pack.sourceUrl && <a href={pack.sourceUrl} target="_blank" rel="noreferrer">打开音频来源 <ExternalLink size={15} /></a>}</section>}
+    {(pack.type === 'listening' || wholePaper && paperSection === 'listening') && <section className="media-panel"><audio ref={audio} controls preload="none" src={pack.audioUrl?.endsWith('.m3u8') ? undefined : pack.pastPaperId ? `/api/past-paper-material?id=${encodeURIComponent(pack.pastPaperId)}&kind=audio` : pack.audioUrl} onError={() => setError('听力加载失败，请重试或打开音频来源；作答仍保留。')} onPlay={() => { if (paused) audio.current?.pause() }}>当前浏览器无法播放音频。</audio><p>计时测试交卷后显示原文；逐题练习核对后锁定答案。</p>{pack.sourceUrl && <a href={pack.sourceUrl} target="_blank" rel="noreferrer">打开音频来源 <ExternalLink size={15} /></a>}</section>}
     <div className={`training-workspace ${pack.passage || pack.pastPaperId ? 'with-passage' : ''}`}>
     {pack.pastPaperId && <PastPaperReader key={pack.pastPaperId} paperId={pack.pastPaperId} section={paperSection} />}
     {pack.passage && <article className="reading-passage">{pack.passage}</article>}
     <div className="training-answer-pane">
-    {wholePaper && (paperSection === 'writing' || paperSection === 'translation') && <label className="written-response">{paperSectionLabels[paperSection]}作答<textarea aria-label={`${paperSectionLabels[paperSection]}作答`} rows={14} maxLength={12000} value={paperSection === 'writing' ? writing : translation} disabled={submitted || paused || busy} onChange={(e) => paperSection === 'writing' ? setWriting(e.target.value) : setTranslation(e.target.value)} placeholder="按左侧原卷要求作答，整卷交卷时一起保存。" /><small>{(paperSection === 'writing' ? writing : translation).match(/[A-Za-z]+(?:['’-][A-Za-z]+)*/g)?.length ?? 0} words</small></label>}
-    {sectionQuestions.length > 0 && <nav className="question-navigator panel" aria-label="答题卡"><div className="training-nav-heading"><strong>已答 {Object.values(answers).filter((a) => a.selected >= 0).length}/{questions.length}</strong><label>显示题目<select value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">全部题目</option><option value="weak">{submitted ? '错题与不确定题' : '未答题'}</option><option value="marked">标记题</option></select></label></div><div>{sectionQuestions.map((q, index) => { const record = records.find((a) => a.questionId === q.id); const number = pack.pastPaperId ? q.id.split('-q').at(-1) : index+1; return <button key={q.id} className={`${answers[q.id]?.selected >= 0 ? 'answered' : ''} ${marked.includes(q.id) ? 'marked' : ''} ${submitted ? record?.correct ? 'is-correct' : 'is-wrong' : ''}`} aria-label={`第 ${number} 题，${submitted ? record?.correct ? '答对' : '答错' : answers[q.id] ? '已答' : '未答'}${marked.includes(q.id) ? '，已标记' : ''}`} onClick={() => { setFilter('all'); if (pack.pastPaperId) setPaperSection(questionSection(Number(q.id.split('-q').at(-1)))); window.requestAnimationFrame(() => document.getElementById(`question-${q.id}`)?.scrollIntoView({ block:'start' })) }}>{number}{marked.includes(q.id) && <Flag size={10} />}</button> })}</div><small>点击题号定位 · 标记题可稍后回看{mode === 'practice' ? ' · 核对后无法改选' : ''}</small></nav>}
+    {wholePaper && (paperSection === 'writing' || paperSection === 'translation') && <label className="written-response">{paperSectionLabels[paperSection]}作答{postgrad && paperSection === 'writing' && <small>请分别标注“小作文”和“大作文”，完成两篇后一起交卷。</small>}<textarea aria-label={`${paperSectionLabels[paperSection]}作答`} rows={14} maxLength={12000} value={paperSection === 'writing' ? writing : translation} disabled={submitted || paused || busy} onChange={(e) => paperSection === 'writing' ? setWriting(e.target.value) : setTranslation(e.target.value)} placeholder="按左侧原卷要求作答，整卷交卷时一起保存。" /><small>{(paperSection === 'writing' ? writing : translation).match(/[A-Za-z]+(?:['’-][A-Za-z]+)*/g)?.length ?? 0} words</small></label>}
+    {sectionQuestions.length > 0 && <nav className="question-navigator panel" aria-label="答题卡"><div className="training-nav-heading"><strong>已答 {Object.values(answers).filter((a) => a.selected >= 0).length}/{questions.length}</strong><label>显示题目<select value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">全部题目</option><option value="weak">{submitted ? '错题与不确定题' : '未答题'}</option><option value="marked">标记题</option></select></label></div><div>{sectionQuestions.map((q, index) => { const record = records.find((a) => a.questionId === q.id); const number = pack.pastPaperId ? q.id.split('-q').at(-1) : index+1; return <button key={q.id} className={`${answers[q.id]?.selected >= 0 ? 'answered' : ''} ${marked.includes(q.id) ? 'marked' : ''} ${submitted ? record?.correct ? 'is-correct' : 'is-wrong' : ''}`} aria-label={`第 ${number} 题，${submitted ? record?.correct ? '答对' : '答错' : answers[q.id] ? '已答' : '未答'}${marked.includes(q.id) ? '，已标记' : ''}`} onClick={() => { setFilter('all'); if (pack.pastPaperId) setPaperSection(questionSection(Number(q.id.split('-q').at(-1)),paper?.target)); window.requestAnimationFrame(() => document.getElementById(`question-${q.id}`)?.scrollIntoView({ block:'start' })) }}>{number}{marked.includes(q.id) && <Flag size={10} />}</button> })}</div><small>点击题号定位 · 标记题可稍后回看{mode === 'practice' ? ' · 核对后无法改选' : ''}</small></nav>}
     <section className="questions-stack">{sectionQuestions.length > 0 && !visible.length && <p className="content-empty">当前筛选下没有题目。</p>}{visible.map((q) => {
       const index = questions.indexOf(q)
       const revealed = submitted || checked.includes(q.id)

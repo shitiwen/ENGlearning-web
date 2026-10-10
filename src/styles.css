@@ -459,3 +459,43 @@ body { background:#171713 url('/images/alpine-dawn-hero.png') center 38% / cover
   .vocab-entry-actions button { flex:1; }
   .vocab-review-reminder { align-items:stretch;flex-direction:column; }
 }
+.training-topic-shortcuts { display:flex; flex-wrap:wrap; gap:8px; }
+.training-topic-shortcuts button { padding:10px 16px; border:1px solid var(--line, #8a9a90); border-radius:10px; background:var(--paper, #f8f6ee); color:#173c35; font-weight:700; }
+.training-topic-shortcuts button[aria-pressed="true"] { background:#173c35; color:#fff; }
+.training-filters summary, .training-management summary, .training-recommendations summary { cursor:pointer; padding:10px 0; font-weight:700; }
+.training-management .data-actions { padding-top:12px; }
+.training-list-page .target-filter { padding:16px 20px; }
+.training-list-page { gap:16px; }
+.training-list-page .page-title h1 { font-size:30px; margin-bottom:8px; }
+.training-list-page .page-title p { margin-bottom:0; }
+.training-list-page .training-tabs { margin:0; padding-bottom:10px; gap:6px; }
+.training-list-page .training-tabs button { padding:10px 12px; white-space:nowrap; }
+.training-list-page .target-filter>div:first-child span { display:none; }
+.training-list-page .target-filter .target-buttons { gap:6px; }
+.training-list-page .target-buttons button { padding:8px 12px; }
+.training-list-page .training-filters>summary { color:#eee9df; padding:0; }
+.training-list-page .material-group>header p { display:none; }
+.training-list-page .material-group>header h2 { font-size:20px; margin:0; }
+.training-list-page .training-grid { gap:12px; }
+.training-list-page .training-card { padding:20px; border-radius:14px; }
+.training-list-page .training-icon { display:none; }
+.training-list-page .training-card h2 { margin:10px 0; font-size:20px; line-height:1.4; }
+.training-list-page .training-card p { margin:6px 0; }
+.training-list-page .training-card .primary { margin:6px 0 12px; order:1; }
+.training-list-page .training-card p { order:2; }
+.training-list-page .material-group>header { margin-bottom:14px; }
+.paper-year-filter { display:flex; align-items:center; gap:12px; margin:16px 0; }
+.paper-year-filter select { max-width:240px; }
+@media(max-width:600px) {
+  .training-list-page .page-title { gap:12px; }
+  .training-list-page .training-tabs { overflow-x:auto; flex-wrap:nowrap; }
+  .training-list-page .training-tabs button { flex:0 0 auto; }
+  .training-list-page .target-filter { padding:12px; gap:8px; display:flex; flex-wrap:wrap; }
+  .training-list-page .target-filter>div:first-child { display:none; }
+  .training-list-page .target-filter .target-buttons { width:100%; flex-wrap:nowrap; overflow-x:auto; }
+  .training-list-page .target-buttons button { flex:0 0 auto; padding:7px 10px; }
+  .training-management summary { padding:0; font-size:13px; }
+  .training-topic-shortcuts { gap:6px; }
+  .training-topic-shortcuts button { padding:7px 10px; font-size:13px; }
+  .paper-year-filter { flex-wrap:wrap; }
+}

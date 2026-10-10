@@ -4,17 +4,26 @@ import { questionsToReview } from './trainingHistory'
 import { parseRecommendedPacks, recommendTraining } from './trainingRecommendations'
 import type { TrainingSession } from './types'
 
-it('整卷55题与专项使用相同原题编号及答案，不为缺听力卷伪造整卷', () => {
-  expect(fullPaperPacks).toHaveLength(2)
-  expect(pastPaperPacks).toHaveLength(11)
+it('近六年90套完整真题与专项使用相同题号及答案', () => {
+  expect(fullPaperPacks).toHaveLength(90)
+  expect(new Set(pastPapers.map(p => p.id)).size).toBe(90)
+  for (const target of ['cet4','cet6','postgrad1','postgrad2']) for (const year of [2021,2022,2023,2024,2025,2026]) expect(fullPaperPacks.some(p => p.examTargets?.includes(target as 'cet4') && p.examYear === year)).toBe(true)
   for (const pack of fullPaperPacks) {
-    expect(pack.questions).toHaveLength(55)
-    expect(new Set(pack.questions.map((q) => q.id)).size).toBe(55)
+    const target = pack.examTargets![0]
+    const total = target.startsWith('postgrad') ? 45 : 55
+    expect(pack.questions).toHaveLength(total)
+    expect(new Set(pack.questions.map((q) => q.id)).size).toBe(total)
+    if (target.startsWith('cet')) expect(pack.audioUrl).toBeTruthy()
     for (const q of pack.questions) {
-      const specialist = pastPaperPacks.find((p) => p.pastPaperId === pack.pastPaperId && p.topic === questionSection(Number(q.id.split('-q').at(-1))))!
+      const specialist = pastPaperPacks.find((p) => p.pastPaperId === pack.pastPaperId && p.topic === questionSection(Number(q.id.split('-q').at(-1)),target))!
       expect(specialist.questions.find((item) => item.id === q.id)).toEqual(q)
       expect(q.answer).toBeGreaterThanOrEqual(0); expect(q.answer).toBeLessThan(q.options.length)
     }
+  }
+  for (const paper of pastPapers) for (const [section,sourceId] of Object.entries(paper.sectionSources ?? {})) {
+    const source = pastPapers.find(p => p.id === sourceId)!
+    expect(source).toBeDefined()
+    for (const [n,answer] of Object.entries(paper.answers).filter(([n]) => questionSection(Number(n),paper.target) === section)) expect(source.answers[n]).toBe(answer)
   }
   expect(pastPapers[0].answers['26']).toBe('D')
   expect(pastPapers[1].answers['36']).toBe('I')

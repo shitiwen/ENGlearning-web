@@ -9,6 +9,7 @@ beforeEach(async () => { await db.sessions.clear() })
 
 it('练习模式核对后锁定答案，计时模式隐藏逐题核对', async () => {
   const view = render(<TrainingPage />)
+  fireEvent.click(screen.getByText(/筛选与作答设置/))
   fireEvent.change(screen.getByLabelText('题目来源'), { target:{ value:'original' } })
   fireEvent.change(screen.getByLabelText('作答模式'), { target:{ value:'practice' } })
   fireEvent.click(screen.getAllByRole('button', { name:/开始训练/ })[0])
@@ -24,6 +25,7 @@ it('练习模式核对后锁定答案，计时模式隐藏逐题核对', async (
   view.unmount()
   await db.sessions.clear()
   render(<TrainingPage />)
+  fireEvent.click(screen.getByText(/筛选与作答设置/))
   fireEvent.change(screen.getByLabelText('题目来源'), { target:{ value:'original' } })
   fireEvent.click(screen.getAllByRole('button', { name:/开始训练/ })[0])
   await screen.findByRole('navigation', { name:'答题卡' })

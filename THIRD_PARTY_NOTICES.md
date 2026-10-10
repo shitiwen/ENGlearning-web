@@ -17,3 +17,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ## Tesseract.js
 
 Schedule-image OCR uses [Tesseract.js](https://github.com/naptha/tesseract.js), licensed under the Apache License 2.0. Tesseract.js and its language models run in the browser; language data may be downloaded and cached by the browser on first use.
+# 真题资料与播放器补充
+
+- 懒笔记（https://english-exam.lazynote.cn/）：在线题库保存原来源链接、题号和参考答案字母，PDF、解析、HLS音频按需从原站读取。非官方整理，原考试资料版权归原权利人，不表示可自由再分发。
+- hls.js：Apache-2.0，https://github.com/video-dev/hls.js 。用于播放原来源的 HLS 真题听力。

@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { paperById, type PaperSection } from '../pastPapers'
 
 export function PastPaperReader({ paperId, section, answers=false, onText }:{paperId:string;section:PaperSection;answers?:boolean;onText?:(text:string)=>void}) {
-  const paper = paperById(paperId)
+  const original = paperById(paperId)
+  const materialId = !answers && original?.sectionSources?.[section] || paperId
+  const paper = paperById(materialId)
   const range = paper?.pages[section] ?? [1,1]
   const firstPage = range[0]
   const [pageNumber,setPageNumber] = useState(range[0])
@@ -25,13 +27,13 @@ export function PastPaperReader({ paperId, section, answers=false, onText }:{pap
       const pdf = await import('pdfjs-dist')
       const worker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
       pdf.GlobalWorkerOptions.workerSrc = worker.default
-      task = pdf.getDocument({url:`/api/past-paper-material?id=${encodeURIComponent(paperId)}&kind=${answers ? 'answers' : 'paper'}`})
+      task = pdf.getDocument({url:`/api/past-paper-material?id=${encodeURIComponent(materialId)}&kind=${answers ? 'answers' : 'paper'}`})
       const document = await task.promise
       if (disposed) { await task.destroy(); return }
       documentRef.current = document; setPageCount(document.numPages)
     })().catch(() => { if (!disposed) { setError('原卷暂时读取失败。可重试读取；已填写答案仍保留。'); setLoading(false) } })
     return () => { disposed = true; void task?.destroy() }
-  }, [paperId,answers,reload])
+  }, [materialId,answers,reload])
   useEffect(() => {
     let disposed = false
     let render:import('pdfjs-dist').RenderTask | undefined
@@ -59,6 +61,6 @@ export function PastPaperReader({ paperId, section, answers=false, onText }:{pap
     {error && <div role="alert"><p>{error}</p><button onClick={() => setReload((n) => n+1)}>重试读取</button>{paper && <a href={answers ? paper.answerUrl : paper.sourceUrl} target="_blank" rel="noreferrer">打开原来源</a>}</div>}
     <div className={`paper-canvas-scroll ${zoom > 1 ? 'zoomed' : ''}`}><canvas ref={canvas} aria-label={`原卷第 ${pageNumber} 页`} /></div>
     <details className="paper-text-view"><summary>当前页文字视图</summary><p>{pageText.trim() || '这一页没有可提取的文字，请查看原卷图像。'}</p></details>
-    <small>按原卷题号作答 · 当前题型建议查看第 {range[0]}–{range[1]} 页，题目可能跨页。</small>
+    <small>按原卷题号作答{materialId !== paperId ? ` · 本题型与${paper?.title}共用，已切换到对应原卷。` : ''}{paper?.pages[section] ? ` · 当前题型建议查看第 ${range[0]}–${range[1]} 页，题目可能跨页。` : ' · 使用页码切换查看对应题型。'}</small>
   </section>
 }
