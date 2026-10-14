@@ -1,12 +1,34 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { EnglishLoopDB, exportBackup, importBackup, seedDatabase, validateBackup } from './db'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { EnglishLoopDB, exportBackup, importBackup, saveVocabularyFromContext, seedDatabase, validateBackup } from './db'
+import { isVocabularyDue } from './scoring'
+import { localDateKey, nextLocalDay } from './date'
 
 let counter = 0
 const makeDb = () => new EnglishLoopDB(`test-english-loop-${counter++}`)
 
 describe('本地数据与备份', () => {
   const opened: EnglishLoopDB[] = []
-  afterEach(async () => { for (const testDb of opened.splice(0)) { testDb.close(); await testDb.delete() } })
+  afterEach(async () => { vi.useRealTimers(); for (const testDb of opened.splice(0)) { testDb.close(); await testDb.delete() } })
+  it('收藏词在本地跨年次日开始，重复收藏不重复建词或重置进度', async () => {
+    vi.useFakeTimers({ toFake:['Date'] })
+    vi.setSystemTime(new Date(2026, 11, 31, 23, 50))
+    const testDb = makeDb(); opened.push(testDb)
+    const input = { term:' Attention ', pos:'n.', meaningZh:'注意力', explanation:'', contextSentence:'Pay attention.', example:'', sourceLabel:'练习' }
+    const [first, duplicate] = await Promise.all([saveVocabularyFromContext(input, testDb), saveVocabularyFromContext(input, testDb)])
+    expect(first.id).toBe(duplicate.id)
+    expect(await testDb.vocabulary.count()).toBe(1)
+    expect(first.contextStudyDate).toBe('2027-01-01')
+    expect(localDateKey(new Date(first.dueAt))).toBe('2027-01-01')
+    expect(new Date(first.dueAt).getHours()).toBe(0)
+    expect(isVocabularyDue(first)).toBe(false)
+    await testDb.vocabulary.update(first.id, { correctCount:7, reviewStage:2, intervalDays:4, bookIds:['cet6-core'] })
+    vi.setSystemTime(nextLocalDay())
+    const recollected = await saveVocabularyFromContext(input, testDb)
+    expect(recollected).toMatchObject({ contextStudyDate:'2027-01-01', correctCount:7, reviewStage:2, intervalDays:4, bookIds:['cet6-core'] })
+    expect(isVocabularyDue(recollected)).toBe(true)
+    vi.setSystemTime(new Date(2027, 0, 3))
+    expect(isVocabularyDue(recollected)).toBe(true)
+  })
   it('种子数据可持久保存并导出恢复', async () => {
     const first = makeDb(); const second = makeDb(); opened.push(first, second)
     await seedDatabase(first)

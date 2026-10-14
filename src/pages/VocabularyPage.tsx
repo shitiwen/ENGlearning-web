@@ -2,9 +2,9 @@ import { CheckCircle2, Headphones, Keyboard, Layers3, Play, RotateCcw, Volume2 }
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { db } from '../db'
-import { localDateKey } from '../date'
+import { localDateKey, nextLocalDay } from '../date'
 import { wordBooks } from '../exam'
-import { applyVocabularyReview, summarizeAnswers } from '../scoring'
+import { applyVocabularyReview, isVocabularyDue, summarizeAnswers } from '../scoring'
 import type { AnswerRecord, Confidence, VocabularyEntry, WordBookId } from '../types'
 import { loadWordBook, materializeWord, type WordBookPayload } from '../wordbooks'
 import { newId } from '../id'
@@ -34,12 +34,19 @@ function fourOptions(current: VocabularyEntry, all: VocabularyEntry[], mode: 'me
 }
 
 export function VocabularyPage() {
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000)
+    return () => window.clearInterval(timer)
+  }, [])
   const wordsData = useLiveQuery(() => db.vocabulary.orderBy('dueAt').toArray())
   const settings = useLiveQuery(() => db.settings.get('app'))
   const words = useMemo(() => wordsData ?? [], [wordsData])
   const knownWords = useMemo(() => new Set(words.map((word) => word.normalized)), [words])
-  const bookWords = useMemo(() => words.filter((word) => !word.bookIds?.length || !settings?.wordBookId || word.bookIds.includes(settings.wordBookId)), [settings?.wordBookId, words])
-  const due = bookWords.filter((word) => new Date(word.dueAt) <= new Date())
+  const bookWords = useMemo(() => words.filter((word) => word.contextStudyDate || !word.bookIds?.length || !settings?.wordBookId || word.bookIds.includes(settings.wordBookId)), [settings?.wordBookId, words])
+  const due = bookWords.filter((word) => isVocabularyDue(word, now)).sort((a, b) => Number(!!b.contextStudyDate) - Number(!!a.contextStudyDate))
+  const tomorrowWords = bookWords.filter((word) => word.contextStudyDate === localDateKey(nextLocalDay(now)))
+  const collectedDue = due.filter((word) => word.contextStudyDate)
   const [queue, setQueue] = useState<VocabularyEntry[]>([])
   const [initialCount, setInitialCount] = useState(0)
   const [completedCount, setCompletedCount] = useState(0)
@@ -122,13 +129,14 @@ export function VocabularyPage() {
       setSelected(null); setSpelling(''); setFeedback(null); setConfidence('sure')
       return
     }
-    await db.vocabulary.put({ ...applyVocabularyReview({ ...current, reviewStage:0 }, true, 'sure'), reviewStage:0 })
+    await db.vocabulary.put({ ...applyVocabularyReview({ ...current, reviewStage:0 }, true, 'sure'), reviewStage:0, contextStudyDate:undefined })
     const last = queue.length === 1
     if (last) {
       const summary = summarizeAnswers(sessionAnswers)
       await db.sessions.update(sessionId, { status:'submitted', submittedAt:new Date().toISOString(), accuracy:summary.accuracy, uncertaintyRate:summary.uncertaintyRate })
       const task = await db.tasks.where('date').equals(localDateKey()).filter((row) => row.module === 'vocabulary' && row.status !== 'completed').first()
-      if (task) await db.tasks.update(task.id, { status:'completed', completedAt:new Date().toISOString() })
+      const remainingCollected = await db.vocabulary.filter((word) => !!word.contextStudyDate && isVocabularyDue(word)).count()
+      if (task && !remainingCollected) await db.tasks.update(task.id, { status:'completed', completedAt:new Date().toISOString() })
     }
     setQueue((items) => items.slice(1)); setCompletedCount((value) => value + 1); setSelected(null); setSpelling(''); setFeedback(null); setConfidence('sure')
   }
@@ -157,6 +165,7 @@ export function VocabularyPage() {
   const reviewLimit = Math.max(4, Math.min(40, settings?.vocabReviewLimit ?? 16))
   const newLimit = Math.max(0, Math.min(20, settings?.vocabNewLimit ?? 8))
   return <div className="page-stack"><section className="page-title"><div><h1>单词专栏</h1><p>巩固旧词，积累新词。每天一点，把词语真正记住。</p></div></section>
+    <section className="panel" aria-label="收藏生词计划"><h2>收藏生词计划</h2><p>今天待学 {collectedDue.length} 个 · 明天已安排 {tomorrowWords.length} 个。阅读和训练中收藏的生词，次日优先进入「复习单词」，不受词书切换影响。</p>{tomorrowWords.length > 0 && <p>明天：{tomorrowWords.map((word) => word.term).join(' · ')}</p>}{collectedDue.length > 0 && <button className="primary" disabled={loadingBook || !settings} onClick={() => void begin('review')}>学习今日收藏生词</button>}</section>
     <section className="vocab-start" aria-label="选择单词学习方式">
       <button className="vocab-start-review" aria-label={`复习单词 · ${Math.min(due.length,reviewLimit)}`} disabled={loadingBook || !settings || !due.length} onClick={() => void begin('review')}><RotateCcw size={26} aria-hidden="true" /><span className="vocab-start-title">复习单词</span><span className="vocab-start-description">巩固学过的词，让记忆更牢固</span><span className="vocab-start-bottom"><span><strong>{Math.min(due.length,reviewLimit)}</strong> 个 / 本轮</span><span className="vocab-start-cta">开始复习 <Play size={16} aria-hidden="true" /></span></span><span className="vocab-start-hint">{due.length ? `共 ${due.length} 个到期词待复习` : '暂无到期词，去积累一些新词吧'}</span></button>
       <button className="vocab-start-new" aria-label={`学习新词 · ${Math.min(unseen,newLimit)}`} disabled={loadingBook || !settings || !catalog || !unseen || !newLimit} onClick={() => due.length ? setShowReviewReminder(true) : void begin('new')}><Layers3 size={26} aria-hidden="true" /><span className="vocab-start-title">学习新词</span><span className="vocab-start-description">认识新的表达，扩展你的词汇量</span><span className="vocab-start-bottom"><span><strong>{Math.min(unseen,newLimit)}</strong> 个 / 本轮</span><span className="vocab-start-cta">开始学习 <Play size={16} aria-hidden="true" /></span></span><span className="vocab-start-hint">{!catalog ? '正在读取词书' : !newLimit ? '新词数量设为 0，可在设置中调整' : !unseen ? '当前词书的新词已学完' : '识义 · 语境 · 听音 · 拼写'}</span></button>
@@ -167,7 +176,7 @@ export function VocabularyPage() {
     {bookStatus && <p className="notice">{bookStatus}</p>}
     <section className="vocab-overview"><div><strong>{catalog?.count ?? '—'}</strong><span>过滤基础词后的词书总量</span></div><div><strong>{bookWords.filter((word) => word.state === 'mastered').length}</strong><span>当前词书确定掌握</span></div><div><strong>{due.length}</strong><span>当前词书到期复习</span></div></section>
     <section className="panel"><h2>通关与复习规则</h2><div className="stage-explain">{stageInfo.map((item,i) => <div key={item.title}><item.icon /><strong>{i+1}. {item.title}</strong><span>{item.hint}</span></div>)}</div><p className="debt-note">每过一关就把该词排到队尾，先练其他词再回来；答错或“猜对但不确定”会回到第一关。通关后按 1、2、4、7、15、30 天复习，答错则从第 1 天重新开始。</p></section>
-    <div className="word-table">{bookWords.map((word) => <article key={word.id}><div><strong>{word.term}</strong><button className="icon-button inline-audio" onClick={() => speak(word.term)} aria-label={`朗读 ${word.term}`}><Volume2 size={15} /></button><span>{word.pos}</span></div><p>{word.meaningZh}</p><span className={`state ${word.state}`}>{word.state === 'mastered' ? '确定掌握' : word.state === 'learning' ? '学习中' : '新词'}</span><small>错/重来 {word.lapses ?? word.wrongCount} · 确定答对 {word.sureCorrectCount}</small></article>)}</div>
+    <div className="word-table">{bookWords.map((word) => <article key={word.id}><div><strong>{word.term}</strong><button className="icon-button inline-audio" onClick={() => speak(word.term)} aria-label={`朗读 ${word.term}`}><Volume2 size={15} /></button><span>{word.pos}</span></div><p>{word.meaningZh}</p><span className={`state ${word.state}`}>{word.state === 'mastered' ? '确定掌握' : word.state === 'learning' ? '学习中' : '新词'}</span>{word.contextStudyDate && <small>{word.contextStudyDate > localDateKey(now) ? `${word.contextStudyDate} 背单词计划` : '今日优先学习'}</small>}<small>错/重来 {word.lapses ?? word.wrongCount} · 确定答对 {word.sureCorrectCount}</small></article>)}</div>
   </div>
 }
 

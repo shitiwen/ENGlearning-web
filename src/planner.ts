@@ -29,10 +29,11 @@ export function generateDailyTasks(args: {
   minutes: number
   tier: TaskTier
   dueWords: number
+  collectedWords?: number
   sessions: TrainingSession[]
   deferred?: DailyTask[]
 }): DailyTask[] {
-  const { date, minutes, tier, dueWords, sessions, deferred = [] } = args
+  const { date, minutes, tier, dueWords, collectedWords = 0, sessions, deferred = [] } = args
   const dateString = dayKey(date)
   const formalDay = [2, 4, 6].includes(date.getDay()) && minutes >= 20
   const formalModule = date.getDay() === 4 ? 'reading' : 'listening'
@@ -42,6 +43,13 @@ export function generateDailyTasks(args: {
   const tasks: DailyTask[] = []
   if (dueWords > 0 || minutes >= 10) {
     tasks.push({ id: `${dateString}-vocabulary`, date: dateString, module: 'vocabulary', title: dueWords ? `复习 ${Math.min(dueWords, Math.max(4, wordMinutes))} 个到期词` : '少量单词热身', minutes: wordMinutes, itemCount: Math.min(Math.max(dueWords, 4), Math.max(4, wordMinutes)), tier, status: 'pending', reason: dueWords ? '优先处理到期词与猜对词' : '用少量词汇保持每日接触' })
+  }
+  if (collectedWords > 0) {
+    const vocabulary = tasks.find((task) => task.module === 'vocabulary')
+    if (vocabulary) {
+      vocabulary.title = `背单词：含 ${collectedWords} 个收藏生词`
+      vocabulary.reason = '优先学习此前收藏的生词，保留原句；数量较多时分轮完成'
+    }
   }
   tasks.push({ id:`${dateString}-speaking`, date:dateString, module:'speaking', title:`${speakingMinutes} 分钟开口练习`, minutes:speakingMinutes, tier, status:'pending', reason:'跟读、录音回放和自评，建立每日开口习惯' })
   const remaining = Math.max(5, minutes - wordMinutes - speakingMinutes)

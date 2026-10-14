@@ -2,9 +2,10 @@ import { ArrowRight, Check, Clock3, FastForward, RotateCcw, Sparkles } from 'luc
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useMemo, useState } from 'react'
 import type { Page } from '../App'
-import { academicWeek, localDateKey } from '../date'
+import { academicWeek, localDateKey, nextLocalDay } from '../date'
 import { db } from '../db'
 import { generateDailyTasks, recommendedMinutes } from '../planner'
+import { isVocabularyDue } from '../scoring'
 import type { DailyTask, TaskTier } from '../types'
 
 const tierLabels: Record<TaskTier, string> = { minimum: '保底', standard: '标准', bonus: '加分' }
@@ -36,7 +37,9 @@ export function TodayPage({ navigate }: { navigate: (page: Page) => void }) {
   const words = useLiveQuery(() => db.vocabulary.toArray()) ?? []
   const sessionsData = useLiveQuery(() => db.sessions.toArray())
   const sessions = useMemo(() => sessionsData ?? [], [sessionsData])
-  const dueWords = words.filter((w) => new Date(w.dueAt) <= now).length
+  const dueWords = words.filter((w) => isVocabularyDue(w, now)).length
+  const collectedWords = words.filter((w) => w.contextStudyDate && isVocabularyDue(w, now)).length
+  const tomorrowWords = words.filter((w) => w.contextStudyDate === localDateKey(nextLocalDay(now)))
   const week = settings ? academicWeek(settings.semesterStartDate, now) : 1
   const activeSchedule = schedule.filter((block) => !block.weeks || block.weeks === 'all' || (block.weeks === 'odd' && week % 2 === 1) || (block.weeks === 'even' && week % 2 === 0))
   const scheduledMinutes = activeSchedule.reduce((sum, block) => {
@@ -53,13 +56,18 @@ export function TodayPage({ navigate }: { navigate: (page: Page) => void }) {
 
   useEffect(() => {
     if (!settings || tasks === undefined) return
-    const created = generateDailyTasks({ date: now, minutes, tier, dueWords, sessions })
+    const created = generateDailyTasks({ date: now, minutes, tier, dueWords, collectedWords, sessions })
     if (!tasks.length) db.tasks.bulkPut(created)
-    else if (!tasks.some((task) => task.module === 'speaking')) {
-      const speaking = created.find((task) => task.module === 'speaking')
-      if (speaking) db.tasks.put(speaking)
+    else {
+      const missing = created.filter((task) => !tasks.some((existing) => existing.module === task.module))
+      if (missing.length) db.tasks.bulkPut(missing)
+      const vocabulary = tasks.find((task) => task.module === 'vocabulary' && ['pending', 'active'].includes(task.status))
+      const planned = created.find((task) => task.module === 'vocabulary')
+      if (collectedWords && vocabulary && planned && vocabulary.title !== planned.title) {
+        db.tasks.update(vocabulary.id, { title:planned.title, reason:planned.reason })
+      }
     }
-  }, [settings, tasks, minutes, tier, dueWords, sessions, now])
+  }, [settings, tasks, minutes, tier, dueWords, collectedWords, sessions, now])
 
   const completion = useMemo(() => {
     if (!tasks?.length) return 0
@@ -70,7 +78,7 @@ export function TodayPage({ navigate }: { navigate: (page: Page) => void }) {
     if (!settings) return
     setTier(nextTier)
     const nextMinutes = recommendedMinutes(nextTier, effectiveOverride, settings)
-    const generated = generateDailyTasks({ date: now, minutes: nextMinutes, tier: nextTier, dueWords, sessions })
+    const generated = generateDailyTasks({ date: now, minutes: nextMinutes, tier: nextTier, dueWords, collectedWords, sessions })
     await db.transaction('rw', db.tasks, async () => { await db.tasks.where('date').equals(today).delete(); await db.tasks.bulkPut(generated) })
   }
   const update = (task: DailyTask, status: DailyTask['status']) => db.tasks.update(task.id, { status, ...(status === 'completed' ? { completedAt: new Date().toISOString() } : {}) })
@@ -120,5 +128,6 @@ export function TodayPage({ navigate }: { navigate: (page: Page) => void }) {
         </article>)}
       </div><p className="debt-note">任务数量不设硬上限，以总时长接近当天预算为准；跳过不会累积成“欠债”。</p>
     </section>
+    {tomorrowWords.length > 0 && <section className="panel" aria-label="明日生词计划"><h2>明日背单词计划</h2><p>已安排 {tomorrowWords.length} 个收藏生词：{tomorrowWords.map((word) => word.term).join(' · ')}。明天优先学习，未完成的生词继续保留。</p><button className="secondary" onClick={() => navigate('vocabulary')}>查看生词计划 <ArrowRight size={16} /></button></section>}
   </div>
 }

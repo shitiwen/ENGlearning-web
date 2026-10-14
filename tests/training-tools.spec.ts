@@ -10,6 +10,8 @@ async function library(page:Page,kind='all') {
 }
 
 test('训练选词收藏、笔记与笔迹保留，错因引导对应练习',async ({page}) => {
+  const today = new Date(2026, 9, 14, 10)
+  await page.clock.install({ time:today })
   let dictionaryFailed=true
   await page.route('**/data/ecdict-common.json',route => dictionaryFailed ? route.fulfill({status:503,json:{}}) : route.fulfill({json:{attention:{word:'attention',translation:'n. 注意力',pos:'n',exchange:'',phonetic:'/əˈtenʃən/'}}}))
   let aiCalls=0
@@ -70,6 +72,20 @@ test('训练选词收藏、笔记与笔迹保留，错因引导对应练习',asy
   await expect(page.getByRole('navigation',{name:'选择专项题型'}).getByRole('button',{name:'选词填空',exact:true})).toHaveAttribute('aria-pressed','true')
   await page.getByRole('button',{name:'单词',exact:true}).click()
   await expect(page.getByText('attention',{exact:true}).last()).toBeVisible()
+  await expect(page.getByRole('region',{name:'收藏生词计划'})).toContainText('今天待学 0 个 · 明天已安排 1 个')
+  await page.getByRole('button',{name:'今天',exact:true}).click()
+  await expect(page.getByRole('region',{name:'明日生词计划'})).toContainText('attention')
+  await page.getByRole('button',{name:'查看生词计划'}).click()
+  await page.screenshot({path:`test-results/vocabulary-tomorrow-${test.info().project.name}.png`,fullPage:true})
+  const tomorrow = new Date(today);tomorrow.setDate(tomorrow.getDate()+1)
+  await page.clock.setSystemTime(tomorrow)
+  await page.reload()
+  await expect(page.getByText('背单词：含 1 个收藏生词',{exact:true})).toBeVisible()
+  await page.getByRole('button',{name:'单词',exact:true}).click()
+  await page.getByLabel('当前词书').selectOption('cet6-core')
+  await expect(page.getByRole('region',{name:'收藏生词计划'})).toContainText('今天待学 1 个 · 明天已安排 0 个')
+  await page.getByRole('button',{name:'学习今日收藏生词'}).click()
+  await expect(page.getByRole('button',{name:/attention/}).first()).toBeVisible()
 })
 
 test('批改失败可离开页面，回到列表查看状态并重试，不丢原作答',async ({page}) => {

@@ -3,6 +3,12 @@ import { deferTask, generateDailyTasks } from './planner'
 import type { DailyTask, TrainingSession } from './types'
 
 describe('每日计划', () => {
+  it('收藏生词纳入次日单词任务，仍生成其他模块且保持预算', () => {
+    const tasks = generateDailyTasks({ date:new Date(2026, 9, 15), minutes:40, tier:'standard', dueWords:22, collectedWords:20, sessions:[] })
+    expect(tasks.find((task) => task.module === 'vocabulary')).toMatchObject({ date:'2026-10-15', title:'背单词：含 20 个收藏生词', status:'pending' })
+    expect(tasks.some((task) => task.module === 'speaking')).toBe(true)
+    expect(tasks.reduce((sum, task) => sum + task.minutes, 0)).toBe(40)
+  })
   it('主观题没有客观分数，不会当成零分阅读降低计划难度', () => {
     const sessions:TrainingSession[] = [{ id:'written',packId:'essay',module:'reading',startedAt:'',updatedAt:'',elapsedMs:1,answers:[],status:'submitted',writtenResult:{ kind:'writing',response:'My essay',checklist:[] } }]
     const tasks = generateDailyTasks({ date:new Date('2026-09-17T12:00:00'),minutes:30,tier:'standard',dueWords:4,sessions })

@@ -131,6 +131,7 @@ export interface VocabularyEntry {
   sourceLabel: string
   createdAt: string
   dueAt: string
+  contextStudyDate?: string
   intervalDays: number
   correctCount: number
   sureCorrectCount: number

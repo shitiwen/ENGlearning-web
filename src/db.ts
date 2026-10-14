@@ -2,6 +2,7 @@ import Dexie, { type EntityTable } from 'dexie'
 import type { BackupFile, ContentItem, DailyTask, DateOverride, Highlight, ScheduleBlock, Scratchpad, Settings, TrainingSession, VocabularyEntry } from './types'
 import { defaultSettings, demoContents, seedVocabulary } from './data/seed'
 import { newId } from './id'
+import { localDateKey, nextLocalDay } from './date'
 
 export class EnglishLoopDB extends Dexie {
   settings!: EntityTable<Settings, 'id'>
@@ -133,25 +134,28 @@ export async function saveVocabularyFromContext(args: {
 }, target = db) {
   const normalized = args.term.trim().toLowerCase()
   if (!normalized || !args.meaningZh.trim()) throw new Error('单词和确认后的含义不能为空')
-  const existing = await target.vocabulary.where('normalized').equals(normalized).first()
-  if (existing) {
-    await target.vocabulary.update(existing.id, { ...args, normalized, dueAt: new Date().toISOString(), state: 'learning' })
-    return { ...existing, ...args, normalized }
-  }
-  const item: VocabularyEntry = {
-    ...args,
-    id: newId(),
-    normalized,
-    createdAt: new Date().toISOString(),
-    dueAt: new Date().toISOString(),
-    intervalDays: 0,
-    correctCount: 0,
-    sureCorrectCount: 0,
-    wrongCount: 0,
-    state: 'new',
-    reviewStage: 0,
-    lapses: 0
-  }
-  await target.vocabulary.put(item)
-  return item
+  return target.transaction('rw', target.vocabulary, async () => {
+    const existing = await target.vocabulary.where('normalized').equals(normalized).first()
+    const tomorrow = nextLocalDay()
+    const contextStudyDate = existing?.contextStudyDate && existing.contextStudyDate < localDateKey(tomorrow)
+      ? existing.contextStudyDate : localDateKey(tomorrow)
+    const item: VocabularyEntry = {
+      id: newId(),
+      createdAt: new Date().toISOString(),
+      intervalDays: 0,
+      correctCount: 0,
+      sureCorrectCount: 0,
+      wrongCount: 0,
+      state: 'new',
+      reviewStage: 0,
+      lapses: 0,
+      ...existing,
+      ...args,
+      normalized,
+      contextStudyDate,
+      dueAt: new Date(`${contextStudyDate}T00:00:00`).toISOString()
+    }
+    await target.vocabulary.put(item)
+    return item
+  })
 }

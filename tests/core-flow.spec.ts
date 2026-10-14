@@ -10,7 +10,7 @@ test('25 分钟计划到收藏生词再刷新仍保留', async ({ page }) => {
   await minutes.fill('25'); await minutes.blur()
   await page.getByRole('button', { name:'内容' }).click()
   await page.getByRole('button', { name:'本站文本' }).click()
-  await page.getByRole('button', { name:'开始阅读' }).first().click()
+  await page.locator('.content-card').filter({ hasText:'A Small Lab, a Better Measurement' }).getByRole('button', { name:'开始阅读' }).click()
   await expect(page.getByRole('heading', { name:'A Small Lab, a Better Measurement' })).toBeVisible()
   await page.evaluate(() => {
     const node = document.querySelector('.article-text')!.firstChild!
@@ -22,9 +22,11 @@ test('25 分钟计划到收藏生词再刷新仍保留', async ({ page }) => {
   })
   await expect(page.getByRole('heading', { name:'systematic' })).toBeVisible()
   await page.getByRole('button', { name:/加入生词本/ }).click()
+  await expect(page.getByText('已加入背单词计划：新收藏生词明天开始，已有待学词保留原计划。')).toBeVisible()
   await page.reload()
   await page.getByRole('button', { name:'单词' }).click()
   await expect(page.getByText('systematic', { exact:true }).last()).toBeVisible()
+  await expect(page.getByRole('region', { name:'收藏生词计划' })).toContainText('明天已安排 1 个')
 })
 
 test('训练提交前隐藏解析，提交后自动判分', async ({ page }) => {

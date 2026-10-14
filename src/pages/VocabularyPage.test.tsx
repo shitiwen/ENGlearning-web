@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { VocabularyPage } from './VocabularyPage'
 import { db } from '../db'
 import { defaultSettings, seedVocabulary } from '../data/seed'
+import { localDateKey, nextLocalDay } from '../date'
 
 vi.mock('../wordbooks', async (importOriginal) => ({
   ...await importOriginal<typeof import('../wordbooks')>(),
@@ -13,6 +14,7 @@ beforeEach(async () => {
   await db.settings.put({ ...defaultSettings, vocabNewLimit:1 })
   await db.vocabulary.clear()
   await db.sessions.clear()
+  await db.tasks.clear()
   await db.vocabulary.put({ ...seedVocabulary[0], dueAt:'2000-01-01T00:00:00.000Z' })
 })
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
@@ -64,4 +66,48 @@ it('新词上限为零时禁用新词入口', async () => {
   render(<VocabularyPage />)
   await screen.findByRole('button', { name:'复习单词 · 1' })
   expect(screen.getByRole('button', { name:'学习新词 · 0' })).toBeDisabled()
+})
+
+it('明天收藏词今天不抽取，到期收藏词跨词书优先于普通到期词', async () => {
+  const tomorrow = nextLocalDay()
+  await db.vocabulary.bulkPut([
+    { ...seedVocabulary[0], id:'tomorrow', term:'tomorrowword', normalized:'tomorrowword', contextStudyDate:localDateKey(tomorrow), dueAt:tomorrow.toISOString(), bookIds:['cet6-core'] },
+    { ...seedVocabulary[0], id:'collected', term:'collectedword', normalized:'collectedword', contextStudyDate:localDateKey(), dueAt:new Date().toISOString(), bookIds:['cet6-core'] }
+  ])
+  await openPage()
+  expect(screen.getByRole('region', { name:'收藏生词计划' })).toHaveTextContent('今天待学 1 个 · 明天已安排 1 个')
+  fireEvent.click(screen.getByRole('button', { name:'学习今日收藏生词' }))
+  await screen.findByRole('progressbar')
+  expect(screen.getByRole('button', { name:/collectedword/ })).toBeVisible()
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuemax', '2')
+})
+
+it.each([false, true])('收藏词答错退出仍待学，通关后按剩余收藏词决定任务状态（还有待学词：%s）', async (hasRemaining) => {
+  await db.vocabulary.clear()
+  const word = { ...seedVocabulary[0], contextStudyDate:localDateKey(), dueAt:new Date().toISOString() }
+  await db.vocabulary.put(word)
+  await db.tasks.put({ id:'today-vocab', date:localDateKey(), module:'vocabulary', title:'生词', minutes:5, tier:'standard', status:'pending', reason:'' })
+  await openPage()
+  fireEvent.click(screen.getByRole('button', { name:'学习今日收藏生词' }))
+  await screen.findByRole('progressbar')
+  fireEvent.click(screen.getByRole('button', { name:/谨慎的/ }))
+  fireEvent.click(screen.getByRole('button', { name:'确认答案' }))
+  await waitFor(async () => expect((await db.vocabulary.get(word.id))?.wrongCount).toBe(word.wrongCount + 1))
+  fireEvent.click(screen.getByRole('button', { name:'← 保存并退出' }))
+  expect(screen.getByRole('region', { name:'收藏生词计划' })).toHaveTextContent('今天待学 1 个')
+  fireEvent.click(screen.getByRole('button', { name:'学习今日收藏生词' }))
+  await screen.findByRole('progressbar')
+  if (hasRemaining) await db.vocabulary.put({ ...word, id:'another-collected', term:'another', normalized:'another' })
+  for (let stage = 0; stage < 4; stage++) {
+    if (stage === 3) fireEvent.change(await screen.findByPlaceholderText('输入完整英文单词'), { target:{ value:word.term } })
+    else fireEvent.click(await screen.findByRole('button', { name:new RegExp(`^[A-D]\\s*${stage === 1 ? word.term : word.meaningZh}$`) }))
+    fireEvent.click(screen.getByRole('button', { name:'确认答案' }))
+    await screen.findByText('这一关通过', { exact:true })
+    fireEvent.click(screen.getByRole('button', { name:stage < 3 ? '先练下一个词，稍后回来过下一关' : '本词通关，继续下一词' }))
+    if (stage < 3) await waitFor(async () => expect((await db.vocabulary.get(word.id))?.reviewStage).toBe(stage + 1))
+  }
+  await screen.findByRole('heading', { name:'本轮多关训练完成' })
+  expect((await db.vocabulary.get(word.id))?.contextStudyDate).toBeUndefined()
+  expect(new Date((await db.vocabulary.get(word.id))!.dueAt).getTime()).toBeGreaterThan(Date.now())
+  expect((await db.tasks.get('today-vocab'))?.status).toBe(hasRemaining ? 'pending' : 'completed')
 })

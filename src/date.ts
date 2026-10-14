@@ -5,6 +5,13 @@ export const localDateKey = (date = new Date()) => {
   return `${y}-${m}-${d}`
 }
 
+export function nextLocalDay(date = new Date()) {
+  const next = new Date(date)
+  next.setDate(next.getDate() + 1)
+  next.setHours(0, 0, 0, 0)
+  return next
+}
+
 export function academicWeek(startDate: string, date = new Date()) {
   const start = new Date(`${startDate}T00:00:00`)
   const target = new Date(date.getFullYear(), date.getMonth(), date.getDate())

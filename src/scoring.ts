@@ -1,4 +1,9 @@
 import type { AnswerRecord, Confidence, Question, VocabularyEntry } from './types'
+import { localDateKey } from './date'
+
+export function isVocabularyDue(word: VocabularyEntry, now = new Date()) {
+  return word.contextStudyDate ? word.contextStudyDate <= localDateKey(now) : new Date(word.dueAt) <= now
+}
 
 export function scoreAnswer(question: Question, selected: number, confidence: Confidence, timeMs: number): AnswerRecord {
   return { questionId: question.id, selected, correct: selected === question.answer, confidence, timeMs }

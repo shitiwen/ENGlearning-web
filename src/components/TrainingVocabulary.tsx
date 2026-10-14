@@ -61,7 +61,7 @@ export function TrainingVocabulary({ sourceId,sourceLabel,children }:{ sourceId:
     const id = sequence.current; setSaving(true)
     try {
       await saveVocabularyFromContext({ ...word,pos:word.pos ?? '',explanation:word.explanation ?? '',example:word.example ?? word.contextSentence,sourceContentId:sourceId })
-      if (id === sequence.current) setMessage('已加入生词本与到期复习队列，原句和练习来源一并保存。')
+      if (id === sequence.current) setMessage('已加入背单词计划：新收藏生词明天开始，原句和练习来源一并保存。')
     } catch { if (id === sequence.current) setMessage('生词保存失败，内容仍在词卡中。请重试。') }
     finally { setSaving(false) }
   }

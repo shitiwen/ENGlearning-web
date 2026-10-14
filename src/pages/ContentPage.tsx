@@ -210,7 +210,7 @@ export function ContentPage({ profile }:{ profile?:LearnerProfile|null }) {
   const saveWord = async () => {
     if (!active || !lookup) return
     await saveVocabularyFromContext({ term: lookup.term, pos: lookup.pos, meaningZh: lookup.meaningZh, explanation: lookup.explanation, contextSentence: lookup.contextSentence, example: lookup.example, sourceContentId: active.id, sourceLabel: active.title, phonetic:lookup.phonetic, englishDefinition:lookup.englishDefinition, wordParts:lookup.wordParts, derivatives:lookup.derivatives, collocations:lookup.collocations, synonyms:lookup.synonyms, antonyms:lookup.antonyms })
-    setLookupMessage('已加入同一个生词本，并进入复习队列。')
+    setLookupMessage('已加入背单词计划：新收藏生词明天开始，已有待学词保留原计划。')
   }
   const addHighlight = async () => {
     if (!active || !lookup || lookup.start < 0) return
