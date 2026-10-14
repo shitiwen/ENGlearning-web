@@ -1,9 +1,29 @@
 import { expect, it } from 'vitest'
-import { questionsToReview } from './trainingHistory'
+import { questionsToReview, trainingProgress } from './trainingHistory'
 import { trainingPacks } from './data/seed'
 import { objectivePracticePacks } from './data/objectivePractice'
 import { validateTrainingPacks } from './trainingPacks'
 import type { TrainingSession } from './types'
+
+it('练习卡选择最新完整草稿和提交记录，不把错题重练当作整份练习', () => {
+  const pack = trainingPacks[0]
+  const saved = (id:string, status:TrainingSession['status'], day:number):TrainingSession => ({ id, packId:pack.id, module:pack.type, status, startedAt:'2026-10-01', updatedAt:`2026-10-${day}`, elapsedMs:0, answers:[] })
+  const draft = { ...saved('draft','paused',13), answers:[
+    { questionId:pack.questions[0].id, selected:0, correct:true, confidence:'sure' as const, timeMs:0 },
+    { questionId:pack.questions[0].id, selected:0, correct:true, confidence:'sure' as const, timeMs:0 },
+    { questionId:'removed-question', selected:0, correct:true, confidence:'sure' as const, timeMs:0 },
+    { questionId:pack.questions[1].id, selected:-1, correct:false, confidence:'unsure' as const, timeMs:0 }
+  ] }
+  const sessions = [saved('older','active',11), saved('submitted','submitted',12), draft, { ...saved('retry','active',14), questionIds:[pack.questions[0].id] }]
+  const before = [...sessions]
+  const progress = trainingProgress(pack,sessions)
+  expect(progress.draft?.id).toBe('draft')
+  expect(progress.latest?.id).toBe('submitted')
+  expect(progress.attempts).toBe(1)
+  expect(progress.answered).toBe(1)
+  expect(sessions).toEqual(before)
+  expect(trainingProgress(pack,[]).answered).toBe(0)
+})
 
 it('最新一次确定答对移出错题，重练不会丢掉其他待巩固题', () => {
   const pack = trainingPacks[0]

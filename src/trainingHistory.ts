@@ -6,6 +6,16 @@ export function trainingTopic(pack:TrainingPack) {
   return pack.topic ?? (pack.type === 'listening' ? 'listening' : 'reading')
 }
 
+export function trainingProgress(pack:TrainingPack, sessions:TrainingSession[]) {
+  const attempts = sessions.filter((session) => session.packId === pack.id && !session.questionIds)
+    .sort((a,b) => (b.submittedAt ?? b.updatedAt).localeCompare(a.submittedAt ?? a.updatedAt))
+  const draft = attempts.find((session) => session.status !== 'submitted')
+  const completed = attempts.filter((session) => session.status === 'submitted')
+  const questions = draft?.packSnapshot?.questions ?? pack.questions
+  const answered = new Set(draft?.answers.filter((answer) => answer.selected >= 0 && questions.some((question) => question.id === answer.questionId)).map((answer) => answer.questionId)).size
+  return { draft, latest:completed[0], attempts:completed.length, answered, total:questions.length }
+}
+
 export function questionsToReview(pack:TrainingPack, sessions:TrainingSession[]) {
   const latest = new Map<string, { correct:boolean; confidence:string }>()
   const ids = new Set(pack.questions.map((q) => q.id))

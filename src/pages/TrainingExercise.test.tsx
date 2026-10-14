@@ -6,6 +6,7 @@ import { TrainingExercise } from './TrainingExercise'
 import { WrittenExercise } from './WrittenExercise'
 import { writtenPrompts } from '../data/writtenPractice'
 import { StrictMode } from 'react'
+import type { TrainingSession } from '../types'
 
 beforeEach(async () => { await db.sessions.clear() })
 afterEach(cleanup)
@@ -63,4 +64,30 @@ it('写作提交前隐藏参考，提交后保留完整作答和检查项', asyn
   expect(saved.writtenResult?.response).toBe('A clear study routine helps me learn regularly.')
   expect(saved.writtenResult?.checklist).toHaveLength(1)
   expect(screen.getByText('查看参考与讲解')).toBeInTheDocument()
+})
+
+it('提交后可只看待巩固题，并进入错题列表', async () => {
+  const onReviewMistakes = vi.fn()
+  const review = { id:'review', packId:pack.id, module:pack.type, status:'submitted' as const, startedAt:'2026-10-14', updatedAt:'2026-10-14', elapsedMs:0, answers:pack.questions.map((question,index) => ({ questionId:question.id, selected:question.answer, correct:true, confidence:index === 0 ? 'unsure' as const : 'sure' as const, timeMs:0 })) }
+  const view = render(<TrainingExercise pack={pack} mode="exam" review={review} onExit={vi.fn()} onRetry={vi.fn()} onReviewMistakes={onReviewMistakes} />)
+  await screen.findByRole('navigation',{ name:'答题卡' })
+  fireEvent.click(screen.getByRole('button',{ name:'只看错题与不确定题（1）' }))
+  expect(view.container.querySelectorAll('.question-card')).toHaveLength(1)
+  fireEvent.click(screen.getByRole('button',{ name:'全部解析' }))
+  expect(view.container.querySelectorAll('.question-card')).toHaveLength(pack.questions.length)
+  fireEvent.click(screen.getByRole('button',{ name:'进入错题巩固' }))
+  expect(onReviewMistakes).toHaveBeenCalledOnce()
+})
+
+it('续写指定草稿，不误恢复同题目更早的草稿', async () => {
+  const prompt = writtenPrompts[0]
+  const draft = (id:string, response:string):TrainingSession => ({ id, packId:prompt.id, module:'reading', status:'paused', startedAt:'2026-10-14', updatedAt:'2026-10-14', elapsedMs:0, answers:[], writtenResult:{ kind:prompt.kind,response,checklist:[] } })
+  await db.sessions.bulkPut([draft('old','Old response'),draft('latest','Latest saved response')])
+  render(<WrittenExercise prompt={prompt} resumeId="latest" onExit={vi.fn()} />)
+  await waitFor(() => expect(screen.getByLabelText('你的英文作答')).toHaveValue('Latest saved response'))
+  fireEvent.click(screen.getByRole('button',{ name:'继续' }))
+  fireEvent.change(screen.getByLabelText('你的英文作答'),{ target:{ value:'Updated latest response' } })
+  fireEvent.click(screen.getByRole('button',{ name:'← 保存并退出' }))
+  await waitFor(async () => expect((await db.sessions.get('latest'))?.writtenResult?.response).toBe('Updated latest response'))
+  expect((await db.sessions.get('old'))?.writtenResult?.response).toBe('Old response')
 })

@@ -133,3 +133,12 @@ h1,h2,h3 { text-wrap:balance; }
   .submit-bar { bottom:calc(78px + env(safe-area-inset-bottom)); }
 }
 @media (prefers-reduced-motion:reduce) { button,summary { transition:none; } }
+
+.training-card-progress { margin:10px 0; font-size:14px; line-height:1.6; color:var(--workspace-muted); }
+.training-card-progress progress { display:block; width:100%; height:6px; margin-top:8px; accent-color:var(--gold); }
+.training-card-actions,.training-result-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.training-list-page .training-card-actions { order:1; margin:8px 0; }
+.training-list-page .training-card-actions .primary { margin:0; }
+.training-card-actions button { min-height:44px; }
+.training-result-actions { margin-bottom:20px; }
+.training-result-actions button[aria-pressed="true"] { background:var(--green); color:#fff; }

@@ -10,7 +10,7 @@ import { PastPaperReader } from '../components/PastPaperReader'
 
 const checklist = ['完成题目要求，主要信息没有遗漏','段落或句子之间逻辑清楚','检查了时态、主谓一致和单复数','检查了拼写和不自然的表达']
 
-export function WrittenExercise({ prompt, review, onExit }: { prompt:WrittenPrompt; review?:TrainingSession; onExit:() => void }) {
+export function WrittenExercise({ prompt, review, resumeId, onExit }: { prompt:WrittenPrompt; review?:TrainingSession; resumeId?:string; onExit:() => void }) {
   const [session, setSession] = useState<TrainingSession>()
   const [response, setResponse] = useState(review?.writtenResult?.response ?? '')
   const [checked, setChecked] = useState<string[]>(review?.writtenResult?.checklist ?? [])
@@ -28,7 +28,8 @@ export function WrittenExercise({ prompt, review, onExit }: { prompt:WrittenProm
     let cancelled = false
     const load = async () => {
       const saved = review ?? await db.transaction('rw',db.sessions,async () => {
-        const existing = await db.sessions.where('packId').equals(prompt.id).filter((s) => s.status !== 'submitted').first()
+        const existing = resumeId ? await db.sessions.get(resumeId) : await db.sessions.where('packId').equals(prompt.id).filter((s) => s.status !== 'submitted').first()
+        if (resumeId && (!existing || existing.packId !== prompt.id || existing.status === 'submitted')) throw new Error('指定草稿已不可用')
         if (existing) return existing
         // shortcut: 主观题沿用现有会话表，新增独立云端分类统计时扩展 module 枚举。
         const draft:TrainingSession = { id:newId(), packId:prompt.id, module:'reading', startedAt:new Date().toISOString(), updatedAt:new Date().toISOString(), elapsedMs:0, answers:[], status:'active', writtenResult:{ kind:prompt.kind, response:'', checklist:[] } }
@@ -40,7 +41,7 @@ export function WrittenExercise({ prompt, review, onExit }: { prompt:WrittenProm
     }
     void load().catch(() => { if (!cancelled) setError('加载草稿失败，请返回后重试。') })
     return () => { cancelled = true }
-  }, [prompt.id,prompt.kind,review,setElapsed])
+  }, [prompt.id,prompt.kind,review,resumeId,setElapsed])
 
   const save = async (status:'active'|'paused'|'submitted') => {
     if (!session) throw new Error('草稿尚未加载')
