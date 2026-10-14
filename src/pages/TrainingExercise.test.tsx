@@ -91,3 +91,10 @@ it('续写指定草稿，不误恢复同题目更早的草稿', async () => {
   await waitFor(async () => expect((await db.sessions.get('latest'))?.writtenResult?.response).toBe('Updated latest response'))
   expect((await db.sessions.get('old'))?.writtenResult?.response).toBe('Old response')
 })
+
+it('已删除的指定草稿不会被静默替换，提供重试恢复入口', async () => {
+  render(<TrainingExercise pack={pack} mode="exam" resumeId="deleted" onExit={vi.fn()} onRetry={vi.fn()} />)
+  await screen.findByRole('button',{name:'重试恢复答案'})
+  expect(await db.sessions.count()).toBe(0)
+  expect(screen.getByRole('alert')).toHaveTextContent('指定草稿已不可用')
+})

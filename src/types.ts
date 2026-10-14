@@ -167,6 +167,7 @@ export interface TrainingPack {
   passage?: string
   audioUrl?: string
   transcript?: string
+  captions?: ListeningCue[]
   questions: Question[]
   attribution: string
   sourceUrl?: string
@@ -182,6 +183,13 @@ export interface TrainingPack {
   examSet?: number
   pastPaperId?: string
   paperSection?: 'full' | 'listening' | 'cloze' | 'matching' | 'reading'
+}
+
+export interface ListeningCue {
+  start: number
+  end: number
+  text: string
+  sentenceIndex?: number
 }
 
 export interface AnswerRecord {
@@ -210,13 +218,13 @@ export interface TrainingSession {
   markedQuestionIds?: string[]
   questionIds?: string[]
   packSnapshot?: TrainingPack
-  examResult?: { paperId:string; writing:string; translation:string }
+  listeningCues?: ListeningCue[]
+  examResult?: { paperId:string; writing:string; translation:string; feedback?:Partial<Record<'writing'|'translation',WrittenFeedbackState>> }
   writtenResult?: {
     kind: 'writing' | 'translation'
     response: string
-    feedback?: string
     checklist: string[]
-  }
+  } & WrittenFeedbackState
   speakingResult?: {
     promptId: string
     repetitions: number
@@ -224,6 +232,14 @@ export interface TrainingSession {
     clarity: 1 | 2 | 3 | 4 | 5
     note?: string
   }
+}
+
+export interface WrittenFeedbackState {
+  feedback?: string
+  feedbackStatus?: 'pending' | 'completed' | 'failed'
+  feedbackError?: string
+  feedbackRequestedAt?: string
+  feedbackRequestId?: string
 }
 
 export interface Highlight {
@@ -240,6 +256,7 @@ export interface Scratchpad {
   contentId: string
   strokes: Array<{ color: string; width: number; points: Array<{ x: number; y: number }> }>
   updatedAt: string
+  note?: string
 }
 
 export interface BackupFile {

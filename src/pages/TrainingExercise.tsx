@@ -1,4 +1,4 @@
-import { CheckCircle2, Clock3, ExternalLink, Flag, Pause, Play } from 'lucide-react'
+import { CheckCircle2, Clock3, Flag, Pause, Play } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { db } from '../db'
 import { localDateKey } from '../date'
@@ -7,6 +7,10 @@ import { formatDuration, useTimer } from '../hooks/useTimer'
 import { scoreAnswer, summarizeAnswers } from '../scoring'
 import { trainingTopic, trainingTopicLabels } from '../trainingHistory'
 import { PastPaperReader } from '../components/PastPaperReader'
+import { TrainingVocabulary } from '../components/TrainingVocabulary'
+import { QuestionNotebook } from '../components/QuestionNotebook'
+import { ListeningPlayer } from '../components/ListeningPlayer'
+import { WrittenFeedback } from '../components/WrittenFeedback'
 import { paperById, paperSectionLabels, questionSection, sectionLabel, sectionsForPaper, type PaperSection } from '../pastPapers'
 import type { AnswerRecord, Confidence, TrainingPack, TrainingSession } from '../types'
 
@@ -32,11 +36,12 @@ export function TrainingExercise({ pack, mode:initialMode, review, questionIds, 
   const [paperSection,setPaperSection] = useState<PaperSection>(wholePaper ? 'writing' : pack.paperSection === 'full' ? 'reading' : pack.paperSection ?? 'reading')
   const [writing,setWriting] = useState('')
   const [translation,setTranslation] = useState('')
-  const examResult = wholePaper && pack.pastPaperId ? {paperId:pack.pastPaperId,writing,translation} : undefined
+  const examResult = wholePaper && pack.pastPaperId ? { ...session?.examResult,paperId:pack.pastPaperId,writing,translation } : undefined
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const finished = useRef(Boolean(review))
-  const audio = useRef<HTMLAudioElement>(null)
+  const [paperTexts,setPaperTexts] = useState<Partial<Record<PaperSection,string>>>({})
+  const [reload,setReload] = useState(0)
   const [elapsed, setElapsed] = useTimer(0, Boolean(session) && !paused && !submitted)
 
   useEffect(() => {
@@ -45,6 +50,7 @@ export function TrainingExercise({ pack, mode:initialMode, review, questionIds, 
       const saved = review ?? await db.transaction('rw', db.sessions, async () => {
         const ownDraft = await db.sessions.get(draftId)
         const existing = resumeId ? await db.sessions.get(resumeId) : ownDraft ?? (!fresh ? await db.sessions.where('packId').equals(pack.id).filter((s) => s.status !== 'submitted' && !s.questionIds).first() : undefined)
+        if (resumeId && (!existing || existing.packId !== pack.id || existing.status === 'submitted')) throw new Error('指定草稿已不可用，请返回训练列表重新选择')
         if (existing) return existing
         const draft:TrainingSession = { id:draftId, packId:pack.id, packSnapshot:pack, ...(wholePaper && pack.pastPaperId ? {examResult:{paperId:pack.pastPaperId,writing:'',translation:''}} : {}), module:pack.type, mode:initialMode, questionIds, startedAt:new Date().toISOString(), updatedAt:new Date().toISOString(), elapsedMs:0, answers:[], status:'active' }
         await db.sessions.put(draft)
@@ -58,14 +64,16 @@ export function TrainingExercise({ pack, mode:initialMode, review, questionIds, 
     }
     void load().catch((e:unknown) => { if (!cancelled) setError(`无法加载训练：${e instanceof Error ? e.message : '本地存储不可用'}`) })
     return () => { cancelled = true }
-  }, [pack, review, fresh, resumeId, draftId, initialMode, questionIds, questions, setElapsed, wholePaper])
+  }, [pack, review, fresh, resumeId, draftId, initialMode, questionIds, questions, setElapsed, wholePaper,reload])
 
   const draftAnswers = () => questions.flatMap((q) => answers[q.id] ? [scoreAnswer(q, answers[q.id].selected, answers[q.id].confidence, answers[q.id].timeMs)] : [])
   const persist = async (status:'active'|'paused' = paused ? 'paused' : 'active') => {
     if (!session || finished.current || submitted) return
     await db.transaction('rw', db.sessions, async () => {
-      if ((await db.sessions.get(session.id))?.status === 'submitted') return
-      await db.sessions.update(session.id, { answers:draftAnswers(), ...(examResult ? {examResult} : {}), elapsedMs:elapsed, mode, checkedQuestionIds:checked, markedQuestionIds:marked, updatedAt:new Date().toISOString(), status })
+      const saved = await db.sessions.get(session.id)
+      if (!saved) throw new Error('训练草稿不存在')
+      if (saved.status === 'submitted') return
+      if (!await db.sessions.update(session.id, { answers:draftAnswers(), ...(examResult ? {examResult} : {}), elapsedMs:elapsed, mode, checkedQuestionIds:checked, markedQuestionIds:marked, updatedAt:new Date().toISOString(), status })) throw new Error('训练草稿保存失败')
     })
   }
   useEffect(() => {
@@ -73,21 +81,6 @@ export function TrainingExercise({ pack, mode:initialMode, review, questionIds, 
     const timer = window.setInterval(() => { void persist().catch(() => setError('自动保存失败，请使用“保存并退出”重试。')) }, 5000)
     return () => window.clearInterval(timer)
   })
-  useEffect(() => { if (paused || submitted) audio.current?.pause() }, [paused, submitted])
-  useEffect(() => {
-    const element = audio.current
-    if (!element || !pack.audioUrl?.endsWith('.m3u8')) return
-    let disposed = false
-    let player:import('hls.js').default | undefined
-    const source = pack.pastPaperId ? `/api/past-paper-material?id=${encodeURIComponent(pack.pastPaperId)}&kind=audio` : pack.audioUrl
-    void import('hls.js').then(({default:Hls}) => {
-      if (disposed) return
-      if (Hls.isSupported()) { player = new Hls(); player.loadSource(source!); player.attachMedia(element); player.on(Hls.Events.ERROR, (_event,data) => { if (data.fatal && !disposed) setError('听力读取失败，请切换题型后重试或打开音频来源；作答仍保留。') }) }
-      else if (element.canPlayType('application/vnd.apple.mpegurl')) element.src = source!
-      else setError('当前浏览器无法播放此听力，请打开音频来源。')
-    }).catch(() => { if (!disposed) setError('听力播放器加载失败，请重试或打开音频来源。') })
-    return () => { disposed = true; player?.destroy() }
-  }, [pack.audioUrl,pack.pastPaperId,paperSection,session])
 
   const saveAndExit = async () => {
     if (submitted) { onExit(); return }
@@ -132,8 +125,8 @@ export function TrainingExercise({ pack, mode:initialMode, review, questionIds, 
   const visible = sectionQuestions.filter((q) => filter === 'all' || (filter === 'marked' ? marked.includes(q.id) : submitted ? weakIds.includes(q.id) : !answers[q.id]))
   const remaining = Math.max(0, pack.estimatedMinutes * 60000 - elapsed)
 
-  if (!session) return <section className="panel"><h1>{pack.title}</h1><p role="status">{error || '正在恢复答案…'}</p><button onClick={onExit}>返回训练列表</button></section>
-  return <div className="exercise-layout">
+  if (!session) return <section className="panel"><h1>{pack.title}</h1><p role={error ? 'alert' : 'status'}>{error || '正在恢复答案…'}</p>{error && <button onClick={() => { setError(''); setReload(value => value+1) }}>重试恢复答案</button>}<button onClick={onExit}>返回训练列表</button></section>
+  return <TrainingVocabulary sourceId={pack.id} sourceLabel={pack.title}><div className="exercise-layout">
     <header className="exercise-head"><button className="back-button" disabled={busy} onClick={() => void saveAndExit()}>{submitted ? '← 返回训练列表' : '← 保存并退出'}</button><div><span className="content-kind">{wholePaper ? '整套真题' : trainingTopicLabels[trainingTopic(pack)]} · {mode === 'exam' ? '计时测试' : '逐题练习'}</span><h1>{pack.title}</h1></div><div className="timer"><Clock3 size={18} />{formatDuration(elapsed)}{!submitted && <button className="icon-button" disabled={busy} aria-label={paused ? '继续' : '暂停'} onClick={async () => { const next = !paused; setPaused(next); try { await persist(next ? 'paused' : 'active') } catch { setError('暂停状态保存失败，请重试。') } }}>{paused ? <Play /> : <Pause />}</button>}</div></header>
     {error && <p className="notice" role="alert">{error}</p>}
     {submitted && <section className="result-banner training-result"><CheckCircle2 /><div><h2>{summary.correct}/{summary.total} 题正确 · {Math.round(summary.accuracy*100)}%</h2><p>确定掌握 {summary.mastered} 题 · 用时 {formatDuration(elapsed)}{mode === 'practice' ? ' · 练习结果包含核对过的题目' : ''}</p></div>{weakIds.length > 0 && <button className="primary" onClick={() => onRetry(weakIds)}>重练错题与不确定题（{weakIds.length}）</button>}</section>}
@@ -141,22 +134,24 @@ export function TrainingExercise({ pack, mode:initialMode, review, questionIds, 
     {!submitted && <p className="training-time-note">建议用时 {pack.estimatedMinutes} 分钟 · {remaining ? `还剩 ${formatDuration(remaining)}` : '已超过建议时间，可继续完成后交卷'}{paused ? ' · 已暂停，点击继续后作答' : ''}</p>}
     {wholePaper && <nav className="paper-section-tabs" aria-label="整卷分区">{sectionsForPaper(paper).map((section) => <button key={section} aria-pressed={paperSection === section} onClick={() => { setPaperSection(section); setFilter('all') }}>{sectionLabel(section,paper?.target)}</button>)}</nav>}
     {wholePaper && submitted && <p className="notice">客观题结果不换算官方 710 分。写作 {writing.trim() ? '已保存' : '未作答'} · 翻译 {translation.trim() ? '已保存' : '未作答'}，主观题不计入客观正确率。</p>}
-    {(pack.type === 'listening' || wholePaper && paperSection === 'listening') && <section className="media-panel"><audio ref={audio} controls preload="none" src={pack.audioUrl?.endsWith('.m3u8') ? undefined : pack.pastPaperId ? `/api/past-paper-material?id=${encodeURIComponent(pack.pastPaperId)}&kind=audio` : pack.audioUrl} onError={() => setError('听力加载失败，请重试或打开音频来源；作答仍保留。')} onPlay={() => { if (paused) audio.current?.pause() }}>当前浏览器无法播放音频。</audio><p>计时测试交卷后显示原文；逐题练习核对后锁定答案。</p>{pack.sourceUrl && <a href={pack.sourceUrl} target="_blank" rel="noreferrer">打开音频来源 <ExternalLink size={15} /></a>}</section>}
+    {(pack.type === 'listening' || wholePaper && paperSection === 'listening') && <ListeningPlayer key={session.id} pack={pack} sessionId={session.id} savedCues={session.listeningCues} showTranscript={submitted || mode === 'practice'} paused={paused} />}
     <div className={`training-workspace ${pack.passage || pack.pastPaperId ? 'with-passage' : ''}`}>
-    {pack.pastPaperId && <PastPaperReader key={pack.pastPaperId} paperId={pack.pastPaperId} section={paperSection} />}
-    {pack.passage && <article className="reading-passage">{pack.passage}</article>}
+    {pack.pastPaperId && <PastPaperReader key={pack.pastPaperId} paperId={pack.pastPaperId} section={paperSection} onText={text => setPaperTexts(old => ({ ...old,[paperSection]:text }))} />}
+    {pack.passage && <article className="reading-passage" data-study-text>{pack.passage}</article>}
     <div className="training-answer-pane">
     {wholePaper && (paperSection === 'writing' || paperSection === 'translation') && <label className="written-response">{paperSectionLabels[paperSection]}作答{postgrad && paperSection === 'writing' && <small>请分别标注“小作文”和“大作文”，完成两篇后一起交卷。</small>}<textarea aria-label={`${paperSectionLabels[paperSection]}作答`} rows={14} maxLength={12000} value={paperSection === 'writing' ? writing : translation} disabled={submitted || paused || busy} onChange={(e) => paperSection === 'writing' ? setWriting(e.target.value) : setTranslation(e.target.value)} placeholder="按左侧原卷要求作答，整卷交卷时一起保存。" /><small>{(paperSection === 'writing' ? writing : translation).match(/[A-Za-z]+(?:['’-][A-Za-z]+)*/g)?.length ?? 0} words</small></label>}
+    {wholePaper && (paperSection === 'writing' || paperSection === 'translation') && <QuestionNotebook key={paperSection} contentId={'question:'+pack.pastPaperId+'-'+paperSection} label={paperSectionLabels[paperSection]} />}
     {sectionQuestions.length > 0 && <nav className="question-navigator panel" aria-label="答题卡"><div className="training-nav-heading"><strong>已答 {Object.values(answers).filter((a) => a.selected >= 0).length}/{questions.length}</strong><label>显示题目<select value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">全部题目</option><option value="weak">{submitted ? '错题与不确定题' : '未答题'}</option><option value="marked">标记题</option></select></label></div><div>{sectionQuestions.map((q, index) => { const record = records.find((a) => a.questionId === q.id); const number = pack.pastPaperId ? q.id.split('-q').at(-1) : index+1; return <button key={q.id} className={`${answers[q.id]?.selected >= 0 ? 'answered' : ''} ${marked.includes(q.id) ? 'marked' : ''} ${submitted ? record?.correct ? 'is-correct' : 'is-wrong' : ''}`} aria-label={`第 ${number} 题，${submitted ? record?.correct ? '答对' : '答错' : answers[q.id] ? '已答' : '未答'}${marked.includes(q.id) ? '，已标记' : ''}`} onClick={() => { setFilter('all'); if (pack.pastPaperId) setPaperSection(questionSection(Number(q.id.split('-q').at(-1)),paper?.target)); window.requestAnimationFrame(() => document.getElementById(`question-${q.id}`)?.scrollIntoView({ block:'start' })) }}>{number}{marked.includes(q.id) && <Flag size={10} />}</button> })}</div><small>点击题号定位 · 标记题可稍后回看{mode === 'practice' ? ' · 核对后无法改选' : ''}</small></nav>}
-    <section className="questions-stack">{sectionQuestions.length > 0 && !visible.length && <p className="content-empty">当前筛选下没有题目。</p>}{visible.map((q) => {
+    <section className="questions-stack">{sectionQuestions.length > 0 && !visible.length && <div className="content-empty"><p>当前筛选下没有题目。</p><button className="secondary compact" onClick={() => setFilter('all')}>显示全部题目</button></div>}{visible.map((q) => {
       const index = questions.indexOf(q)
       const revealed = submitted || checked.includes(q.id)
       const record = submitted ? records.find((a) => a.questionId === q.id) : revealed && answers[q.id] ? scoreAnswer(q, answers[q.id].selected, answers[q.id].confidence, 0) : undefined
-      return <article className="question-card" id={`question-${q.id}`} key={q.id}><span className="question-number">{pack.pastPaperId ? q.id.split('-q').at(-1) : index+1}</span><h2>{q.prompt}</h2><button className="secondary compact question-flag" aria-pressed={marked.includes(q.id)} disabled={busy || (paused && !submitted)} onClick={() => void toggleMark(q.id)}><Flag size={14} />{marked.includes(q.id) ? '取消标记' : '标记本题'}</button><div className="option-list">{q.options.map((option,i) => <button disabled={revealed || paused || busy} key={i} aria-pressed={answers[q.id]?.selected === i} className={`${answers[q.id]?.selected === i ? 'selected' : ''} ${revealed ? i === q.answer ? 'correct' : answers[q.id]?.selected === i ? 'wrong' : '' : ''}`} onClick={() => setAnswers((old) => ({ ...old, [q.id]:{ selected:i, confidence:old[q.id]?.confidence ?? 'sure', timeMs:elapsed } }))}><span>{String.fromCharCode(65+i)}</span>{option}</button>)}</div><div className="confidence-row"><span>作答时：</span>{(['sure','unsure'] as const).map((confidence) => <button key={confidence} disabled={revealed || paused || busy || !answers[q.id]} aria-pressed={answers[q.id]?.confidence === confidence} className={answers[q.id]?.confidence === confidence ? 'selected' : ''} onClick={() => setAnswers((old) => ({ ...old, [q.id]:{ ...old[q.id], confidence } }))}>{confidence === 'sure' ? '确定' : '不确定／猜的'}</button>)}</div>{mode === 'practice' && !revealed && <button className="secondary compact" disabled={!answers[q.id] || paused || busy} onClick={() => setChecked((old) => [...old,q.id])}>核对本题答案</button>}{revealed && <div className="explanation"><strong>{record?.correct ? '回答正确' : `${record?.selected === -1 ? '未作答 · ' : ''}正确答案：${String.fromCharCode(65+q.answer)}`}{record?.correct && record.confidence === 'unsure' ? '，但不计为确定掌握' : ''}</strong><p>{q.explanation}</p>{q.evidence && <blockquote>依据：{q.evidence}</blockquote>}{submitted && !record?.correct && <label>错因<select value={record?.wrongReason ?? ''} onChange={(e) => void updateReason(q.id,e.target.value as AnswerRecord['wrongReason'])}><option value="">未记录</option>{['词义','定位','推断','听辨','走神','猜测','其他'].map((reason) => <option key={reason}>{reason}</option>)}</select></label>}</div>}</article>
+      return <article className="question-card" id={`question-${q.id}`} key={q.id}><span className="question-number">{pack.pastPaperId ? q.id.split('-q').at(-1) : index+1}</span><h2 data-study-text>{q.prompt}</h2><button className="secondary compact question-flag" aria-pressed={marked.includes(q.id)} disabled={busy || (paused && !submitted)} onClick={() => void toggleMark(q.id)}><Flag size={14} />{marked.includes(q.id) ? '取消标记' : '标记本题'}</button><div className="option-list">{q.options.map((option,i) => <button disabled={revealed || paused || busy} key={i} aria-pressed={answers[q.id]?.selected === i} className={`${answers[q.id]?.selected === i ? 'selected' : ''} ${revealed ? i === q.answer ? 'correct' : answers[q.id]?.selected === i ? 'wrong' : '' : ''}`} onClick={() => setAnswers((old) => ({ ...old, [q.id]:{ selected:i, confidence:old[q.id]?.confidence ?? 'sure', timeMs:elapsed } }))}><span>{String.fromCharCode(65+i)}</span><span data-study-text data-study-source={pack.title+' · 第 '+(pack.pastPaperId ? q.id.split('-q').at(-1) : index+1)+' 题'}>{option}</span></button>)}</div><div className="confidence-row"><span>作答时：</span>{(['sure','unsure'] as const).map((confidence) => <button key={confidence} disabled={revealed || paused || busy || !answers[q.id]} aria-pressed={answers[q.id]?.confidence === confidence} className={answers[q.id]?.confidence === confidence ? 'selected' : ''} onClick={() => setAnswers((old) => ({ ...old, [q.id]:{ ...old[q.id], confidence } }))}>{confidence === 'sure' ? '确定' : '不确定／猜的'}</button>)}</div>{mode === 'practice' && !revealed && <button className="secondary compact" disabled={!answers[q.id] || paused || busy} onClick={() => setChecked((old) => [...old,q.id])}>核对本题答案</button>}{revealed && <div className="explanation"><strong>{record?.correct ? '回答正确' : `${record?.selected === -1 ? '未作答 · ' : ''}正确答案：${String.fromCharCode(65+q.answer)}`}{record?.correct && record.confidence === 'unsure' ? '，但不计为确定掌握' : ''}</strong><p data-study-text>{q.explanation}</p>{q.evidence && <blockquote>依据：{q.evidence}</blockquote>}{submitted && !record?.correct && <label>错因<select value={record?.wrongReason ?? ''} onChange={(e) => void updateReason(q.id,e.target.value as AnswerRecord['wrongReason'])}><option value="">未记录</option>{['词义','定位','推断','听辨','走神','猜测','其他'].map((reason) => <option key={reason}>{reason}</option>)}</select></label>}</div>}<QuestionNotebook key={q.id} contentId={'question:'+q.id} label={'第 '+(pack.pastPaperId ? q.id.split('-q').at(-1) : index+1)+' 题'} /></article>
     })}</section>
     </div></div>
     {submitted && pack.pastPaperId && <details className="panel paper-answer-reference"><summary>查看原答案资料（对应卷型）</summary><PastPaperReader paperId={pack.pastPaperId} section={paperSection} answers /><p>来源：{paperById(pack.pastPaperId)?.title}。参考范文和译文不是唯一答案。</p></details>}
-    {submitted && pack.transcript && <section className="transcript panel"><h2>听力原文</h2><p>{pack.transcript}</p></section>}
+
+    {wholePaper && submitted && (paperSection === 'writing' || paperSection === 'translation') && <WrittenFeedback key={paperSection} sessionId={session.id} kind={paperSection} instructions={'请按原卷要求完成'+paperSectionLabels[paperSection]} material={paperTexts[paperSection]} needsMaterial />}
     {!submitted && <button className="submit-bar" disabled={busy || paused} onClick={() => void submit()}>{busy ? '正在保存…' : `提交并判分${Object.keys(answers).length < questions.length ? `（${questions.length-Object.keys(answers).length} 题未答，计为错误）` : ''}`}</button>}
-  </div>
+  </div></TrainingVocabulary>
 }

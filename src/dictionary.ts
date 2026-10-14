@@ -12,7 +12,7 @@ function loadDictionary() {
   dictionaryPromise ??= fetch('/data/ecdict-common.json').then((response) => {
     if (!response.ok) throw new Error('内置词典加载失败')
     return response.json() as Promise<Record<string, DictionaryEntry>>
-  })
+  }).catch((error:unknown) => { dictionaryPromise = undefined; throw error })
   return dictionaryPromise
 }
 
