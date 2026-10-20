@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { EnglishLoopDB } from './db'
-import type { Question, TrainingPack, TrainingSession } from './types'
+import type { MistakeCollectionItem, Question, TrainingPack, TrainingSession } from './types'
 import {
   buildCollectionItems,
   collectSessionMistakes,
   collectSessionIntoNewCollection,
   collectionStats,
+  collectionTrend,
   createCollection,
   deleteCollection,
   filterCollectionItems,
@@ -14,6 +15,7 @@ import {
   renameCollection,
   setItemMastered,
   sortCollections,
+  summarizeCollectionsForReview,
   uniqueCollectionName,
 } from './mistakeCollections'
 
@@ -161,5 +163,66 @@ describe('错题合集', () => {
     expect(await testDb.mistakeItems.count()).toBe(1)
     await removeCollectionItem('not-exists', testDb)
     expect(await testDb.mistakeItems.count()).toBe(1)
+  })
+})
+
+describe('复盘页的合集趋势', () => {
+  const item = (overrides: Partial<MistakeCollectionItem>): MistakeCollectionItem => ({
+    id: overrides.id ?? Math.random().toString(36).slice(2),
+    collectionId: 'c1',
+    packId: 'pack',
+    packTitle: '题包',
+    questionId: overrides.questionId ?? 'q',
+    prompt: '题干',
+    options: ['A', 'B', 'C', 'D'],
+    answer: 0,
+    explanation: '解析',
+    selected: 1,
+    confidence: 'sure',
+    mastered: false,
+    createdAt: '2026-10-01T02:00:00.000Z',
+    updatedAt: '2026-10-01T02:00:00.000Z',
+    ...overrides,
+  })
+
+  it('最近 N 天补零，只有落在窗口内的条目计入', () => {
+    const now = new Date(2026, 9, 10, 12, 0, 0)
+    const items = [
+      item({ id: 'a', createdAt: '2026-10-10T01:00:00.000Z' }),
+      item({ id: 'b', createdAt: '2026-10-09T01:00:00.000Z', mastered: true, updatedAt: '2026-10-10T03:00:00.000Z' }),
+      item({ id: 'c', createdAt: '2026-08-01T01:00:00.000Z' }),
+    ]
+    const trend = collectionTrend(items, 3, now)
+    expect(trend.map((day) => day.date)).toEqual(['2026-10-08', '2026-10-09', '2026-10-10'])
+    expect(trend.find((day) => day.date === '2026-10-10')).toMatchObject({ added: 1, mastered: 1 })
+    expect(trend.reduce((sum, day) => sum + day.added, 0)).toBe(2)
+  })
+
+  it('天数下限为 1，空合集返回全零窗口', () => {
+    const trend = collectionTrend([], 0, new Date(2026, 9, 10, 12, 0, 0))
+    expect(trend).toHaveLength(1)
+    expect(trend[0]).toMatchObject({ added: 0, mastered: 0 })
+  })
+
+  it('复盘概览过滤空合集，按待复习数量降序', () => {
+    const collections = [
+      { id: 'a', name: '少量', description: '', origin: 'manual' as const, createdAt: '2026-10-01', updatedAt: '2026-10-01' },
+      { id: 'b', name: '大量', description: '', origin: 'manual' as const, createdAt: '2026-10-01', updatedAt: '2026-10-01' },
+      { id: 'c', name: '空合集', description: '', origin: 'manual' as const, createdAt: '2026-10-01', updatedAt: '2026-10-01' },
+    ]
+    const now = new Date(2026, 9, 10, 12, 0, 0)
+    const grouped = {
+      a: [item({ id: 'a1', collectionId: 'a', createdAt: '2026-10-09T01:00:00.000Z' })],
+      b: [
+        item({ id: 'b1', collectionId: 'b', createdAt: '2026-10-08T01:00:00.000Z' }),
+        item({ id: 'b2', collectionId: 'b', createdAt: '2026-10-08T01:00:00.000Z', mastered: true, updatedAt: '2026-10-10T01:00:00.000Z' }),
+      ],
+      c: [],
+    }
+    const summary = summarizeCollectionsForReview(collections, grouped, 7, now)
+    expect(summary.entries.map((entry) => entry.collection.name)).toEqual(['大量', '少量'])
+    expect(summary.totalItems).toBe(3)
+    expect(summary.totalMastered).toBe(1)
+    expect(summary.entries[0].trend).toHaveLength(7)
   })
 })

@@ -1,7 +1,7 @@
 import { beforeEach,expect,it,vi } from 'vitest'
 import { aiFetch } from './aiClient'
 import { db } from './db'
-import { expireWrittenFeedback,feedbackFor,requestWrittenFeedback } from './writtenFeedback'
+import { expireWrittenFeedback,feedbackFor,feedbackMaxAttempts,requestWrittenFeedback } from './writtenFeedback'
 import type { TrainingSession } from './types'
 
 vi.mock('./aiClient',() => ({aiFetch:vi.fn()}))
@@ -65,4 +65,40 @@ it('未交卷作答不能发起批改，旧请求不能覆盖新任务', async (
   await db.sessions.update('written',{writtenResult:{...saved!.writtenResult!,feedbackRequestId:'newer',feedback:'Do not replace'}})
   finish(Response.json({answer:'Stale response'})); await task
   expect((await db.sessions.get('written'))?.writtenResult?.feedback).toBe('Do not replace')
+})
+
+it('超时后自动重试一次，成功则保存第二次结果', async () => {
+  await db.sessions.put(session())
+  vi.mocked(aiFetch)
+    .mockImplementationOnce((_path,_payload,signal) => new Promise((_resolve,reject) => {
+      signal?.addEventListener('abort',() => reject(new DOMException('aborted','AbortError')))
+    }))
+    .mockResolvedValueOnce(Response.json({answer:'Retried feedback'}))
+  await requestWrittenFeedback('written','writing','Requirements','',{ timeoutMs:20 })
+  expect(aiFetch).toHaveBeenCalledTimes(feedbackMaxAttempts)
+  const saved = await db.sessions.get('written')
+  expect(saved?.writtenResult?.feedback).toBe('Retried feedback')
+  expect(saved?.writtenResult?.feedbackStatus).toBe('completed')
+  expect(saved?.writtenResult?.feedbackAttempts).toBe(2)
+})
+
+it('两次都超时才标记失败，并说明已自动重试', async () => {
+  await db.sessions.put(session())
+  vi.mocked(aiFetch).mockImplementation((_path,_payload,signal) => new Promise((_resolve,reject) => {
+    signal?.addEventListener('abort',() => reject(new DOMException('aborted','AbortError')))
+  }))
+  await requestWrittenFeedback('written','writing','Requirements','',{ timeoutMs:20 })
+  expect(aiFetch).toHaveBeenCalledTimes(feedbackMaxAttempts)
+  const saved = await db.sessions.get('written')
+  expect(saved?.writtenResult?.feedbackStatus).toBe('failed')
+  expect(saved?.writtenResult?.feedbackError).toContain('已自动重试一次')
+  expect(saved?.writtenResult?.response).toBe('My original essay.')
+})
+
+it('非超时错误不自动重试，避免重复产生费用', async () => {
+  await db.sessions.put(session())
+  vi.mocked(aiFetch).mockRejectedValueOnce(new Error('network unavailable'))
+  await requestWrittenFeedback('written','writing','Requirements','')
+  expect(aiFetch).toHaveBeenCalledOnce()
+  expect((await db.sessions.get('written'))?.writtenResult?.feedbackStatus).toBe('failed')
 })

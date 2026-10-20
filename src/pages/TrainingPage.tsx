@@ -120,9 +120,8 @@ export function TrainingPage({ profile }:{ profile?:LearnerProfile|null }) {
     const progress = trainingProgress(pack, [...activeSessions, ...history])
     const result = progress.latest ? summarizeAnswers(progress.latest.answers) : undefined
     return <article className="training-card" key={pack.id}>
-      <div className="training-icon">{pack.type === 'listening' ? <Headphones /> : <span>Aa</span>}</div>
-      <span className="content-kind">{pack.paperSection === 'full' ? '整套真题' : trainingTopicLabels[trainingTopic(pack)]} · {examLabel(target)} · {({foundation:'基础',standard:'标准',challenge:'挑战'} as const)[pack.difficulty]}</span>
-      <h2>{pack.title}</h2><p>{pack.questions.length} 题 · 预计 {pack.estimatedMinutes} 分钟</p>
+      <div className="training-card-head"><div className="training-icon">{pack.type === 'listening' ? <Headphones /> : <span>Aa</span>}</div><div className="training-card-tags"><span className="topic-chip">{pack.paperSection === 'full' ? '整套真题' : trainingTopicLabels[trainingTopic(pack)]}</span><span className={`source-chip ${pack.pastPaperId ? 'is-past' : 'is-original'}`}>{pack.pastPaperId ? '真题' : '原创'}</span><span className={`difficulty-chip difficulty-${pack.difficulty}`}>{({foundation:'基础',standard:'标准',challenge:'挑战'} as const)[pack.difficulty]}</span></div></div>
+      <h2>{pack.title}</h2><p className="training-card-facts"><span>{pack.questions.length} 题</span><span>预计 {pack.estimatedMinutes} 分钟</span><span>{examLabel(target)}</span></p>
       <div className="training-card-progress">
         {progress.draft ? <><span>待完成 · 已答 {progress.answered}/{progress.total} 题 · {formatDuration(progress.draft.elapsedMs)}</span><progress aria-label={pack.title+' 作答进度'} value={progress.answered} max={progress.total || 1} /></> : <span>{result ? '上次正确率 '+Math.round(result.accuracy*100)+'% · 已提交 '+progress.attempts+' 次' : '尚未开始'}</span>}
       </div>

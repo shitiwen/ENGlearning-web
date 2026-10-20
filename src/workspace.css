@@ -241,6 +241,33 @@ h1,h2,h3 { text-wrap:balance; }
 .history-admin-list input { width:18px; height:18px; accent-color:var(--green); }
 /* 深色训练页把 .training-review-list 的直接子段落刷成浅色，提示条需要保留深字。 */
 .page-training .training-review-list>p.notice { color:#456359; }
+/* 题型卡信息层级：题型 / 真题原创 / 难度分成独立 chip，事实行只留题量与时长。 */
+.training-card-head { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+.training-card-tags { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+.topic-chip,.source-chip,.difficulty-chip { display:inline-flex; align-items:center; padding:4px 9px; border-radius:999px; font-size:11px; font-weight:700; letter-spacing:.04em; white-space:nowrap; }
+.topic-chip { background:rgba(255,255,255,.1); color:#eee9df; }
+.source-chip.is-past { background:#dceadd; color:#173c35; }
+.source-chip.is-original { background:rgba(255,255,255,.07); color:#aeb8b1; border:1px dashed rgba(255,255,255,.2); }
+.difficulty-chip.difficulty-foundation { background:rgba(120,180,140,.2); color:#b7d8c2; }
+.difficulty-chip.difficulty-standard { background:rgba(214,180,110,.2); color:#e3cd9f; }
+.difficulty-chip.difficulty-challenge { background:rgba(200,110,80,.22); color:#e6b7a5; }
+.training-card-facts { display:flex; flex-wrap:wrap; gap:4px 12px; margin:0; font-size:13px; color:#adb6b0; }
+.training-card-facts span+span::before { content:'·'; margin-right:12px; color:#78837d; }
+/* 复盘页：错题合集掌握情况与近 14 天趋势。 */
+.collection-review-list { display:grid; gap:14px; margin-top:16px; }
+.collection-review-list article { display:grid; gap:8px; padding:16px 18px; border:1px solid var(--line); border-radius:14px; background:#f8f6ef; color:#17312d; }
+/* 深色复盘页把 .panel 内的 strong 统一刷成浅色，合集卡是米白底，需要显式压回深色。 */
+.page-review .collection-review-list header strong,
+.page-review .collection-review-list header span { color:#17312d; }
+.collection-review-list header { display:flex; justify-content:space-between; align-items:baseline; gap:12px; }
+.collection-review-list header strong { overflow-wrap:anywhere; }
+.collection-review-list progress { width:100%; height:6px; accent-color:var(--gold); }
+.collection-review-list p { margin:0; font-size:13px; color:var(--muted); }
+.collection-spark { display:flex; align-items:flex-end; gap:3px; height:44px; margin-top:4px; padding:0 2px; background:linear-gradient(to top,rgba(23,49,45,.06),transparent); border-radius:6px; }
+.collection-spark .spark-day { flex:1; display:flex; align-items:flex-end; justify-content:center; gap:1px; height:100%; }
+.collection-spark i { display:block; width:50%; min-height:6px; border-radius:2px 2px 0 0; }
+.collection-spark .spark-added { background:#cdd8cf; }
+.collection-spark .spark-mastered { background:var(--green); }
 @media(max-width:600px) {
   .listening-cues>div { grid-template-columns:1fr; gap:8px; }
   .listening-cues button { justify-self:start; }

@@ -7,6 +7,7 @@
 import type { AnswerRecord, MistakeCollection, MistakeCollectionItem, MistakeCollectionSort, TrainingPack, TrainingSession } from './types'
 import { db, type EnglishLoopDB } from './db'
 import { newId } from './id'
+import { localDateKey } from './date'
 
 export const mistakeCollectionNameLimit = 40
 
@@ -222,3 +223,67 @@ export function filterCollectionItems(items: MistakeCollectionItem[], filter: { 
 }
 
 export const collectionWrongReasons = ['all', ...wrongReasonOptions] as const
+
+export interface CollectionTrendDay {
+  /** 本地日期 YYYY-MM-DD */
+  date: string
+  /** 当天新收进合集的题目数 */
+  added: number
+  /** 当天标记为已掌握的题目数 */
+  mastered: number
+}
+
+/**
+ * 最近 days 天的收集与掌握分布。
+ *
+ * 口径限制：条目只保存 createdAt 与 updatedAt，没有独立的掌握时间戳，
+ * 因此「当天掌握」用「已掌握且最后更新落在当天」近似。这不是逐日快照，
+ * 同一天反复切换掌握状态只会留下最后一次时间。
+ */
+export function collectionTrend(items: MistakeCollectionItem[], days = 14, now = new Date()): CollectionTrendDay[] {
+  const buckets = new Map<string, CollectionTrendDay>()
+  const span = Math.max(1, Math.round(days))
+  for (let offset = span - 1; offset >= 0; offset -= 1) {
+    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - offset)
+    const date = localDateKey(day)
+    buckets.set(date, { date, added: 0, mastered: 0 })
+  }
+  for (const item of items) {
+    const added = localDateKey(new Date(item.createdAt))
+    const bucket = buckets.get(added)
+    if (bucket) bucket.added += 1
+    if (item.mastered) {
+      const mastered = buckets.get(localDateKey(new Date(item.updatedAt)))
+      if (mastered) mastered.mastered += 1
+    }
+  }
+  return [...buckets.values()]
+}
+
+export interface CollectionReviewEntry {
+  collection: MistakeCollection
+  stats: CollectionStats
+  trend: CollectionTrendDay[]
+}
+
+/** 复盘页用的合集概览：只保留有题目的合集，按待复习数量降序。 */
+export function summarizeCollectionsForReview(
+  collections: MistakeCollection[],
+  itemsByCollection: Record<string, MistakeCollectionItem[]>,
+  days = 14,
+  now = new Date(),
+): { entries: CollectionReviewEntry[]; totalItems: number; totalMastered: number } {
+  const entries = collections
+    .map((collection) => {
+      const items = itemsByCollection[collection.id] ?? []
+      return { collection, items, stats: collectionStats(items) }
+    })
+    .filter((entry) => entry.stats.total > 0)
+    .map((entry) => ({ collection: entry.collection, stats: entry.stats, trend: collectionTrend(entry.items, days, now) }))
+    .sort((left, right) => right.stats.pending - left.stats.pending || left.collection.name.localeCompare(right.collection.name, 'zh-CN'))
+  return {
+    entries,
+    totalItems: entries.reduce((sum, entry) => sum + entry.stats.total, 0),
+    totalMastered: entries.reduce((sum, entry) => sum + entry.stats.mastered, 0),
+  }
+}

@@ -241,6 +241,8 @@ export interface WrittenFeedbackState {
   feedbackError?: string
   feedbackRequestedAt?: string
   feedbackRequestId?: string
+  /** 本次批改已发送的请求次数；超时自动重试后为 2 */
+  feedbackAttempts?: number
 }
 
 export interface Highlight {
