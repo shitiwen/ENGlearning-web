@@ -181,9 +181,71 @@ h1,h2,h3 { text-wrap:balance; }
 .training-recommendations>div>div p { font-size:14px; }
 .written-ai { margin-top:20px; padding-top:16px; border-top:1px solid var(--line); }
 .written-ai [role="alert"] { color:#7c2e1b; }
+/* 题目训练增强：成绩分级 / 错题合集 / 记录管理。
+   能力对齐 examcrafts 的专题成绩页与错题本，视觉沿用本站既有语汇。 */
+.training-grade { margin:16px 0; padding:18px 22px; border:1px solid var(--line); border-left:4px solid var(--green); border-radius:16px; background:#f8f6ef; }
+.training-grade .grade-head { display:flex; flex-wrap:wrap; align-items:baseline; gap:10px; }
+.training-grade .grade-head strong { font-size:22px; }
+.training-grade>p { margin:8px 0 0; color:var(--muted); line-height:1.6; }
+.training-grade .grade-facts { display:flex; flex-wrap:wrap; gap:8px 18px; margin:10px 0 0; padding:0; list-style:none; font-size:14px; color:var(--muted); }
+.training-grade.grade-excellent { border-left-color:var(--green); }
+.training-grade.grade-good { border-left-color:var(--gold); }
+.training-grade.grade-pass { border-left-color:#c98a3c; }
+.training-grade.grade-weak { border-left-color:#a4503a; }
+.collect-mistakes { margin:16px 0; }
+.collect-mistakes>summary { cursor:pointer; font-weight:600; }
+.collect-mistakes-body { display:grid; gap:10px; margin-top:14px; }
+.collect-mistakes-body label { display:grid; gap:6px; font-size:14px; color:var(--muted); }
+.collect-mistakes-body button { justify-self:start; }
+.collect-mistakes-note,.collect-mistakes-empty { font-size:13px; color:var(--muted); line-height:1.6; }
+.collection-head { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:16px; }
+.collection-head h2 { margin:0 0 6px; }
+.collection-head p { margin:0; color:var(--muted); line-height:1.6; }
+.collection-sort { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--muted); }
+.collection-sort select { width:auto; min-height:44px; }
+.collection-create { display:grid; gap:12px; margin-bottom:20px; }
+.collection-create h3 { margin:0; }
+.collection-create label { display:grid; gap:6px; font-size:14px; color:var(--muted); }
+.collection-create button { justify-self:start; }
+.collection-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px; }
+.collection-card { display:grid; gap:10px; padding:20px; border:1px solid var(--line); border-radius:18px; background:#f8f6ef; color:#17312d; }
+.collection-card header { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+.collection-card h3 { margin:0; font-size:17px; overflow-wrap:anywhere; }
+.collection-desc { margin:0; font-size:14px; color:var(--muted); line-height:1.6; }
+.collection-meta { margin:0; font-size:13px; color:var(--muted); }
+.collection-card progress { width:100%; height:6px; accent-color:var(--gold); }
+.collection-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.collection-actions button { min-height:40px; }
+.collection-filters { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:14px 0; font-size:14px; color:var(--muted); }
+.collection-filters select { width:auto; min-height:44px; }
+.collection-toggle { display:flex; align-items:center; gap:8px; min-height:44px; white-space:nowrap; }
+.collection-toggle input { width:18px; height:18px; flex:0 0 18px; accent-color:var(--green); }
+.mistake-item { display:grid; gap:12px; }
+.mistake-item.is-mastered { opacity:.68; }
+.mistake-head { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:flex-start; gap:12px; }
+.mistake-head h3 { margin:6px 0 0; font-size:17px; line-height:1.6; }
+.mistake-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.mistake-options { display:grid; gap:8px; margin:0; padding:0; list-style:none; }
+.mistake-options li { display:grid; grid-template-columns:auto minmax(0,1fr); gap:10px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; line-height:1.6; }
+.mistake-options li>span { font-weight:600; color:var(--muted); }
+.mistake-options li.is-correct { border-color:var(--green); background:#eef5ee; }
+.mistake-options li.is-wrong { border-color:#a4503a; background:#fbf0ed; }
+.mistake-answer,.mistake-explain,.mistake-evidence { margin:0; line-height:1.7; }
+.mistake-answer { font-size:14px; color:var(--muted); }
+.mistake-evidence { font-size:13px; color:var(--muted); }
+.history-admin { margin-bottom:20px; }
+.history-admin>summary { cursor:pointer; font-weight:600; }
+.history-admin-body { display:grid; gap:10px; margin-top:14px; }
+.history-admin-list { display:grid; gap:6px; margin:0; padding:0; list-style:none; max-height:280px; overflow:auto; }
+.history-admin-list label { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:10px; font-size:14px; }
+.history-admin-list input { width:18px; height:18px; accent-color:var(--green); }
+/* 深色训练页把 .training-review-list 的直接子段落刷成浅色，提示条需要保留深字。 */
+.page-training .training-review-list>p.notice { color:#456359; }
 @media(max-width:600px) {
   .listening-cues>div { grid-template-columns:1fr; gap:8px; }
   .listening-cues button { justify-self:start; }
   .training-lookup { left:12px; right:12px; width:auto; }
   .wrong-reason-advice { padding:16px; }
+  .collection-grid { grid-template-columns:1fr; }
+  .history-admin-list label { grid-template-columns:auto minmax(0,1fr); }
 }

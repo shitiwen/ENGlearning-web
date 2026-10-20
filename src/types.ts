@@ -260,6 +260,43 @@ export interface Scratchpad {
   note?: string
 }
 
+/** 错题合集：把散落在各次训练里的错题按自己的复习主题分组。 */
+export interface MistakeCollection {
+  id: string
+  name: string
+  description: string
+  /** manual = 手动创建；session = 从某次训练一次性收集 */
+  origin: 'manual' | 'session'
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MistakeCollectionSort {
+  field: 'name' | 'mastery' | 'updated' | 'count' | 'created'
+  direction: 'asc' | 'desc'
+}
+
+/** 合集中的一道错题，保存作答当时的题干快照，题包更新后仍可复盘。 */
+export interface MistakeCollectionItem {
+  id: string
+  collectionId: string
+  packId: string
+  packTitle: string
+  questionId: string
+  prompt: string
+  options: string[]
+  answer: number
+  explanation: string
+  evidence?: string
+  passage?: string
+  selected: number
+  confidence: Confidence
+  wrongReason?: AnswerRecord['wrongReason']
+  mastered: boolean
+  createdAt: string
+  updatedAt: string
+}
+
 export interface BackupFile {
   schemaVersion: 1
   exportedAt: string

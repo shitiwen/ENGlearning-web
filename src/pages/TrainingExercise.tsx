@@ -13,6 +13,9 @@ import { ListeningPlayer } from '../components/ListeningPlayer'
 import { WrittenFeedback } from '../components/WrittenFeedback'
 import { paperById, paperSectionLabels, questionSection, sectionLabel, sectionsForPaper, type PaperSection } from '../pastPapers'
 import type { AnswerRecord, Confidence, TrainingPack, TrainingSession } from '../types'
+import { TrainingGradeCard } from '../components/TrainingGradeCard'
+import { CollectMistakes } from '../components/CollectMistakes'
+import { countWords, trainerOverview } from '../trainerSpec'
 
 export function TrainingExercise({ pack, mode:initialMode, review, questionIds, fresh, resumeId, onExit, onRetry, onReviewMistakes }: {
   pack:TrainingPack; mode:'practice'|'exam'; review?:TrainingSession; questionIds?:string[]; fresh?:boolean
@@ -120,6 +123,9 @@ export function TrainingExercise({ pack, mode:initialMode, review, questionIds, 
     setMarked(next)
   }
   const summary = summarizeAnswers(records)
+  const answeredCount = records.filter((answer) => answer.selected >= 0).length
+  const writtenWords = wholePaper && (paperSection === 'writing' || paperSection === 'translation') ? countWords(paperSection === 'writing' ? writing : translation) : undefined
+  const overview = trainerOverview({ correct: summary.correct, total: summary.total, answered: answeredCount, mastered: summary.mastered, elapsedMs: elapsed, topic: trainingTopic(pack), writtenWords })
   const weakIds = records.filter((a) => !a.correct || a.confidence === 'unsure').map((a) => a.questionId)
   const sectionQuestions = wholePaper ? questions.filter((q) => questionSection(Number(q.id.split('-q').at(-1)),paper?.target) === paperSection) : questions
   const visible = sectionQuestions.filter((q) => filter === 'all' || (filter === 'marked' ? marked.includes(q.id) : submitted ? weakIds.includes(q.id) : !answers[q.id]))
@@ -130,6 +136,8 @@ export function TrainingExercise({ pack, mode:initialMode, review, questionIds, 
     <header className="exercise-head"><button className="back-button" disabled={busy} onClick={() => void saveAndExit()}>{submitted ? '← 返回训练列表' : '← 保存并退出'}</button><div><span className="content-kind">{wholePaper ? '整套真题' : trainingTopicLabels[trainingTopic(pack)]} · {mode === 'exam' ? '计时测试' : '逐题练习'}</span><h1>{pack.title}</h1></div><div className="timer"><Clock3 size={18} />{formatDuration(elapsed)}{!submitted && <button className="icon-button" disabled={busy} aria-label={paused ? '继续' : '暂停'} onClick={async () => { const next = !paused; setPaused(next); try { await persist(next ? 'paused' : 'active') } catch { setError('暂停状态保存失败，请重试。') } }}>{paused ? <Play /> : <Pause />}</button>}</div></header>
     {error && <p className="notice" role="alert">{error}</p>}
     {submitted && <section className="result-banner training-result"><CheckCircle2 /><div><h2>{summary.correct}/{summary.total} 题正确 · {Math.round(summary.accuracy*100)}%</h2><p>确定掌握 {summary.mastered} 题 · 用时 {formatDuration(elapsed)}{mode === 'practice' ? ' · 练习结果包含核对过的题目' : ''}</p></div>{weakIds.length > 0 && <button className="primary" onClick={() => onRetry(weakIds)}>重练错题与不确定题（{weakIds.length}）</button>}</section>}
+    {submitted && <TrainingGradeCard overview={overview} />}
+    {submitted && session && <CollectMistakes pack={pack} session={session} />}
     {submitted && <nav className="training-result-actions" aria-label="训练后复习"><button className="secondary" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>全部解析</button><button className="secondary" aria-pressed={filter === 'weak'} onClick={() => { setFilter('weak'); if (wholePaper && weakIds.length) setPaperSection(questionSection(Number(weakIds[0].split('-q').at(-1)),paper?.target)) }}>只看错题与不确定题（{weakIds.length}）</button>{onReviewMistakes && weakIds.length > 0 && <button className="secondary" onClick={onReviewMistakes}>进入错题巩固</button>}</nav>}
     {!submitted && <p className="training-time-note">建议用时 {pack.estimatedMinutes} 分钟 · {remaining ? `还剩 ${formatDuration(remaining)}` : '已超过建议时间，可继续完成后交卷'}{paused ? ' · 已暂停，点击继续后作答' : ''}</p>}
     {wholePaper && <nav className="paper-section-tabs" aria-label="整卷分区">{sectionsForPaper(paper).map((section) => <button key={section} aria-pressed={paperSection === section} onClick={() => { setPaperSection(section); setFilter('all') }}>{sectionLabel(section,paper?.target)}</button>)}</nav>}

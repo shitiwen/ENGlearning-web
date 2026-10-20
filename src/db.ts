@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { BackupFile, ContentItem, DailyTask, DateOverride, Highlight, ScheduleBlock, Scratchpad, Settings, TrainingSession, VocabularyEntry } from './types'
+import type { BackupFile, ContentItem, DailyTask, DateOverride, Highlight, MistakeCollection, MistakeCollectionItem, ScheduleBlock, Scratchpad, Settings, TrainingSession, VocabularyEntry } from './types'
 import { defaultSettings, demoContents, seedVocabulary } from './data/seed'
 import { newId } from './id'
 import { localDateKey, nextLocalDay } from './date'
@@ -14,6 +14,8 @@ export class EnglishLoopDB extends Dexie {
   sessions!: EntityTable<TrainingSession, 'id'>
   highlights!: EntityTable<Highlight, 'id'>
   scratchpads!: EntityTable<Scratchpad, 'contentId'>
+  mistakeCollections!: EntityTable<MistakeCollection, 'id'>
+  mistakeItems!: EntityTable<MistakeCollectionItem, 'id'>
 
   constructor(name = 'english-loop') {
     super(name)
@@ -28,11 +30,18 @@ export class EnglishLoopDB extends Dexie {
       highlights: 'id, contentId, createdAt',
       scratchpads: 'contentId'
     })
+    // v2：错题合集与合集条目。沿用 v1 的既有表，只追加新表，不改旧字段。
+    this.version(2).stores({
+      mistakeCollections: 'id, name, createdAt, updatedAt',
+      mistakeItems: 'id, collectionId, packId, questionId, mastered, createdAt'
+    })
   }
 }
 
 const legacyDatabaseName = 'english-loop'
-const tableNames = ['settings', 'schedule', 'overrides', 'tasks', 'contents', 'vocabulary', 'sessions', 'highlights', 'scratchpads'] as const
+const tableNames = ['settings', 'schedule', 'overrides', 'tasks', 'contents', 'vocabulary', 'sessions', 'highlights', 'scratchpads', 'mistakeCollections', 'mistakeItems'] as const
+// v2 新增表：更早导出的备份里没有这些表，导入时按空数组补齐，不判为损坏备份。
+const optionalTableNames = ['mistakeCollections', 'mistakeItems'] as const
 
 // ES module 的导入是 live binding：切换账号后，页面和 repository 会使用新的个人数据库实例。
 export let db = new EnglishLoopDB(legacyDatabaseName)
@@ -95,14 +104,23 @@ export function validateBackup(value: unknown): asserts value is BackupFile {
   if (!value || typeof value !== 'object') throw new Error('备份文件不是有效对象')
   const candidate = value as Partial<BackupFile>
   if (candidate.app !== 'english-loop' || candidate.schemaVersion !== 1 || !candidate.data || typeof candidate.data !== 'object') throw new Error('备份版本或应用标识不正确')
-  for (const name of tableNames) if (!Array.isArray(candidate.data[name])) throw new Error(`备份缺少数据表：${name}`)
+  for (const name of tableNames) {
+    if (optionalTableNames.includes(name as typeof optionalTableNames[number])) {
+      if (candidate.data[name] !== undefined && !Array.isArray(candidate.data[name])) throw new Error(`备份中的 ${name} 不是数组`)
+      continue
+    }
+    if (!Array.isArray(candidate.data[name])) throw new Error(`备份缺少数据表：${name}`)
+  }
 }
 
 export async function importBackup(value: unknown, mode: 'replace' | 'merge', target = db) {
   validateBackup(value)
   await target.transaction('rw', tableNames.map((name) => target.table(name)), async () => {
     if (mode === 'replace') for (const name of tableNames) await target.table(name).clear()
-    for (const name of tableNames) await target.table(name).bulkPut(value.data[name])
+    for (const name of tableNames) {
+      const rows = value.data[name] ?? []
+      if (rows.length) await target.table(name).bulkPut(rows)
+    }
   })
 }
 
